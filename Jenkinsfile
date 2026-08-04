@@ -15,6 +15,9 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                // Standard checkout does NOT fetch git submodules (the PaperMod
+                // theme lives in themes/PaperMod as a submodule) — fetch explicitly.
+                bat 'git submodule update --init --recursive'
             }
         }
 
