@@ -1,0 +1,63 @@
+baseURL = "https://www.kanjtomi1967.net/"
+languageCode = "ja"
+title = "Kanji's Tech Notes"
+theme = "PaperMod"
+
+enableRobotsTXT = true
+buildDrafts = false
+buildFuture = false
+buildExpired = false
+
+[pagination]
+  pagerSize = 10
+
+[params]
+  env = "production"
+  title = "Kanji's Tech Notes"
+  description = "AWS / AI / インフラ技術メモ"
+  keywords = ["AWS", "Hugo", "Jenkins", "AI", "Infra"]
+  author = "Kanji"
+  DateFormat = "2006-01-02"
+  defaultTheme = "auto"
+  disableThemeToggle = false
+  ShowReadingTime = true
+  ShowShareButtons = false
+  ShowPostNavLinks = true
+  ShowBreadCrumbs = true
+  ShowCodeCopyButtons = true
+  ShowWordCount = true
+  ShowRssButtonInSectionTermList = true
+  UseHugoToc = true
+
+  [params.homeInfoParams]
+    Title = "こんにちは 👋"
+    Content = "AWS / AI-native インフラ / エンタープライズサポートに関する技術メモを書いています。"
+
+[menu]
+  [[menu.main]]
+    identifier = "posts"
+    name = "記事一覧"
+    url = "/posts/"
+    weight = 10
+  [[menu.main]]
+    identifier = "tags"
+    name = "タグ"
+    url = "/tags/"
+    weight = 20
+  [[menu.main]]
+    identifier = "search"
+    name = "検索"
+    url = "/search/"
+    weight = 30
+
+[taxonomies]
+  tag = "tags"
+  category = "categories"
+
+[markup]
+  [markup.highlight]
+    noClasses = false
+    codeFences = true
+    guessSyntax = true
+    lineNos = true
+    style = "monokai"
