@@ -1,8 +1,8 @@
 ---
-title: +ACI-Test Post+ACI-
+title: "Test Post"
 date: 2026-08-04
-tags: +AFsAIg-test+ACIAXQ-
+tags: ["test"]
 draft: false
 ---
 
-日本語のテストです
+これは自動デプロイのテスト記事です。
