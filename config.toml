@@ -28,6 +28,9 @@ buildExpired = false
   ShowWordCount = true
   ShowRssButtonInSectionTermList = true
   UseHugoToc = true
+  comments = true
+  turnstileSiteKey = "0x4AAAAAAEG_N4t-dvN2MMCh"
+  commentsApiBase = "https://0fr1eq5b4j.execute-api.ap-northeast-1.amazonaws.com"
 
   [params.homeInfoParams]
     Title = "こんにちは 👋"
