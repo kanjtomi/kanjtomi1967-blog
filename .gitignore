@@ -7,3 +7,4 @@ resources/
 *.tfstate.backup
 .terraform.lock.hcl
 terraform.tfvars
+lambda-comments/target/
