@@ -1,0 +1,4 @@
+# Copy this file to terraform.tfvars (which is gitignored) and fill in real values.
+
+turnstile_secret = "0x4AAAAAAA..."   # Cloudflare Turnstile SECRET key (server-side)
+admin_api_key    = "generate-a-long-random-string-here"  # e.g. `openssl rand -hex 32`

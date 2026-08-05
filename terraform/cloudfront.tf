@@ -6,6 +6,34 @@ resource "aws_cloudfront_origin_access_control" "site" {
   signing_protocol                  = "sigv4"
 }
 
+# --- CloudFront Function: rewrites directory-style URIs to their index.html ---
+# S3 (via OAC) only auto-resolves index.html for the exact root "/" request
+# (via default_root_object). For any other path — e.g. /posts/test-post/ —
+# CloudFront requests the literal key "posts/test-post/", which doesn't
+# exist (the real object is "posts/test-post/index.html"), and the private
+# bucket returns 403 AccessDenied instead of a clean 404. This function
+# rewrites the request at the edge before it reaches the origin.
+resource "aws_cloudfront_function" "url_rewrite" {
+  name    = "hugo-directory-index-rewrite"
+  runtime = "cloudfront-js-2.0"
+  comment = "Append index.html to directory-style requests"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+        var request = event.request;
+        var uri = request.uri;
+
+        if (uri.endsWith('/')) {
+            request.uri += 'index.html';
+        } else if (!uri.includes('.')) {
+            request.uri += '/index.html';
+        }
+
+        return request;
+    }
+  EOT
+}
+
 # --- Main site distribution: serves www.kanjtomi1967.net from S3 (private, via OAC) ---
 resource "aws_cloudfront_distribution" "site" {
   enabled             = true
@@ -28,6 +56,11 @@ resource "aws_cloudfront_distribution" "site" {
     compress                = true
 
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6" # AWS managed "CachingOptimized"
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.url_rewrite.arn
+    }
   }
 
   # SPA/Hugo-style 404 handling: Hugo generates its own 404.html

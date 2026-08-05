@@ -128,7 +128,12 @@ aws cloudfront create-invalidation --distribution-id <DIST_ID> --paths "/*"
 ## AWS Infrastructure Notes
 
 - **S3 bucket**: static website hosting enabled, private (accessed only via CloudFront OAC, not public)
-- **CloudFront**: origin = S3 bucket via Origin Access Control; custom domain + ACM cert attached
+- **CloudFront**: origin = S3 bucket via Origin Access Control; custom domain + ACM cert attached.
+  A CloudFront Function (`hugo-directory-index-rewrite`) on `viewer-request`
+  rewrites directory-style URIs (e.g. `/posts/test-post/`) to their `index.html`
+  — required because S3-via-OAC only auto-resolves `index.html` for the exact
+  root `/`, not for subdirectories, which otherwise return 403 AccessDenied
+  instead of serving the page.
 - **ACM**: certificate must be requested in `us-east-1` region regardless of where the bucket lives
 - **Route 53**: hosted zone for `kanjtomi1967.net`; alias A/AAAA record for
   `www.kanjtomi1967.net` pointing to the CloudFront distribution (main site).
@@ -153,13 +158,63 @@ aws cloudfront create-invalidation --distribution-id <DIST_ID> --paths "/*"
   it serves almost no traffic; CloudFront/S3 usage for the main site is
   within or near free tier for personal traffic)
 
+## Live Infrastructure Reference
+
+All infrastructure below is deployed and working (region: `ap-northeast-1`
+except ACM which is `us-east-1`):
+
+- Site S3 bucket: `www.kanjtomi1967.net`
+- Comments S3 bucket: `www.kanjtomi1967.net-comments`
+- Site CloudFront distribution ID: `E1E2XGWP46PS1T`
+- Apex-redirect CloudFront distribution ID: `E2C6IE1U5L07Z1`
+- Comments API Gateway endpoint: `https://0fr1eq5b4j.execute-api.ap-northeast-1.amazonaws.com`
+- Lambda function name: `blog-comments`
+- Route 53 hosted zone: `kanjtomi1967.net` (pre-existing, referenced via data source, not managed by this Terraform)
+- Jenkins job name: `BlogDeploy`, running on a local Windows Jenkins instance, triggered by Poll SCM (`H/5 * * * *`)
+- GitHub repo: `https://github.com/kanjtomi/kanjtomi1967-blog` (public)
+
 ## Conventions
 
 - Post filenames: `YYYY-MM-DD-slug.md`
 - Front-matter fields: `title`, `date`, `tags`, `draft`
 - Tags are used to generate `/tags/<tag>/` index pages automatically via Hugo taxonomy
 
+## Comment System (Lambda + S3)
+
+Self-hosted comments (not Giscus/Disqus), moderated (approval required before
+publishing), protected by Cloudflare Turnstile.
+
+- **Storage**: dedicated private S3 bucket (`www.kanjtomi1967.net-comments`),
+  one JSON object per comment at `comments/{slug}/{id}.json` with a `status`
+  field (`pending` | `approved`)
+- **Backend**: single Java 17 Lambda (`lambda-comments/`), routed internally
+  by API Gateway HTTP API routeKey:
+  - `POST /comments` — public, submits a comment (always starts as `pending`),
+    requires a valid Cloudflare Turnstile token (verified server-side)
+  - `GET /comments?slug=...` — public, returns only `approved` comments for a slug
+  - `GET /admin/pending` — requires `x-api-key` header, lists all pending comments
+  - `POST /admin/approve` — requires `x-api-key` header, body `{slug, id}`, flips status to `approved`
+- **Frontend**: `layouts/_partials/comments.html` (note: `_partials`, not `partials` —
+  Hugo 0.146+ moved the partials lookup directory) overrides PaperMod's built-in
+  comments hook (enabled via `params.comments = true` in `config.toml`) —
+  no `single.html` override needed, PaperMod calls this partial automatically
+  on pages where comments are enabled
+- **Moderation workflow**: no admin UI — approve via `curl`/PowerShell using
+  the `x-api-key`, see `scripts/comments-admin.md`
+- **Cost**: Lambda + API Gateway HTTP API usage for a personal blog stays
+  within or very near free tier; realistically a few cents to ~$1/month even
+  after free tier
+- **Config values (already set, live)**:
+  `params.commentsApiBase = "https://0fr1eq5b4j.execute-api.ap-northeast-1.amazonaws.com"`,
+  `params.turnstileSiteKey = "0x4AAAAAAEG_N4t-dvN2MMCh"` (both public values —
+  safe to be in the public repo; the Turnstile *secret* key and `admin_api_key`
+  stay in `terraform.tfvars`, which is gitignored and confirmed never committed)
+- **Build**: `lambda-comments/` is a Maven project producing a shaded fat JAR
+  (`mvn package` → `target/comments-lambda.jar`), which Terraform's
+  `aws_lambda_function.comments` deploys directly. This build step must run
+  before `terraform apply` picks up changes to the Lambda code.
+
 ## Out of Scope
 
-- No user auth, comments, or likes (single-author, publish/browse only per project scope)
-- No server-side compute (Lambda/EC2) unless a future feature explicitly requires it
+- No user login/accounts (comments are anonymous + name field only)
+- No likes/reactions
