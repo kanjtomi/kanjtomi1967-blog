@@ -1,0 +1,87 @@
+<section id="comments" style="margin-top: 3rem;">
+  <h2>コメント</h2>
+
+  <div id="comments-list">読み込み中…</div>
+
+  <form id="comment-form" style="margin-top: 2rem; display: flex; flex-direction: column; gap: 0.75rem; max-width: 480px;">
+    <input type="text" id="comment-author" placeholder="お名前" maxlength="80" required>
+    <textarea id="comment-body" placeholder="コメント" maxlength="3000" rows="4" required></textarea>
+
+    <div class="cf-turnstile" data-sitekey="{{ .Site.Params.turnstileSiteKey }}"></div>
+
+    <button type="submit">送信(承認後に公開されます)</button>
+    <p id="comment-status" style="font-size: 0.85rem;"></p>
+  </form>
+</section>
+
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script>
+(function () {
+  var apiBase = "{{ .Site.Params.commentsApiBase }}";
+  var slug = "{{ .File.BaseFileName }}";
+  var listEl = document.getElementById("comments-list");
+  var form = document.getElementById("comment-form");
+  var statusEl = document.getElementById("comment-status");
+
+  function renderComments(comments) {
+    if (!comments.length) {
+      listEl.textContent = "まだコメントはありません。";
+      return;
+    }
+    listEl.innerHTML = "";
+    comments.forEach(function (c) {
+      var div = document.createElement("div");
+      div.style.marginBottom = "1rem";
+      var author = document.createElement("strong");
+      author.textContent = c.author;
+      var date = document.createElement("span");
+      date.style.marginLeft = "0.5rem";
+      date.style.fontSize = "0.8rem";
+      date.style.color = "#888";
+      date.textContent = new Date(c.createdAt).toLocaleString("ja-JP");
+      var body = document.createElement("p");
+      body.textContent = c.body;
+      div.appendChild(author);
+      div.appendChild(date);
+      div.appendChild(body);
+      listEl.appendChild(div);
+    });
+  }
+
+  fetch(apiBase + "/comments?slug=" + encodeURIComponent(slug))
+    .then(function (res) { return res.json(); })
+    .then(renderComments)
+    .catch(function () { listEl.textContent = "コメントの読み込みに失敗しました。"; });
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var token = document.querySelector('input[name="cf-turnstile-response"]');
+    var payload = {
+      slug: slug,
+      author: document.getElementById("comment-author").value,
+      body: document.getElementById("comment-body").value,
+      turnstileToken: token ? token.value : ""
+    };
+
+    statusEl.textContent = "送信中…";
+
+    fetch(apiBase + "/comments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("submit failed");
+        return res.json();
+      })
+      .then(function () {
+        statusEl.textContent = "送信しました。承認後に表示されます。";
+        form.reset();
+        if (window.turnstile) window.turnstile.reset();
+      })
+      .catch(function () {
+        statusEl.textContent = "送信に失敗しました。もう一度お試しください。";
+      });
+  });
+})();
+</script>
