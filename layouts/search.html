@@ -1,0 +1,96 @@
+{{- define "main" }}
+
+<header class="page-header">
+    <h1>{{- (printf "%s&nbsp;" .Title ) | htmlUnescape -}}
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+    </h1>
+    {{- if .Description }}
+    <div class="post-description">
+        {{ .Description }}
+    </div>
+    {{- end }}
+    {{- if not (.Param "hideMeta") }}
+    <div class="post-meta">
+        {{- partial "translation_list.html" . -}}
+    </div>
+    {{- end }}
+</header>
+
+<section id="ask-ai" style="margin-bottom: 2.5rem;">
+    <h2>AIに聞く</h2>
+    <form id="ask-ai-form" style="display: flex; flex-direction: column; gap: 0.75rem; max-width: 480px;">
+        <input type="text" id="ask-ai-question" placeholder="このブログについて質問する…" maxlength="300" required>
+        <div class="cf-turnstile" data-sitekey="{{ .Site.Params.turnstileSiteKey }}"></div>
+        <button type="submit">質問する</button>
+    </form>
+    <div id="ask-ai-answer" style="margin-top: 1rem;"></div>
+</section>
+
+<div id="searchbox" class="searchbox">
+    <input id="searchInput" disabled placeholder="{{ .Params.placeholder | default (printf "%s ↵" .Title) }}"
+        aria-label="search" type="search" autocomplete="off" maxlength="64">
+    <ul id="searchResults" class="searchResults" aria-label="search results"></ul>
+</div>
+
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script>
+(function () {
+  var apiBase = "{{ .Site.Params.ragApiBase }}";
+  var form = document.getElementById("ask-ai-form");
+  var answerEl = document.getElementById("ask-ai-answer");
+
+  function renderAnswer(data) {
+    answerEl.innerHTML = "";
+    var p = document.createElement("p");
+    p.textContent = data.answer;
+    answerEl.appendChild(p);
+
+    if (data.sources && data.sources.length) {
+      var ul = document.createElement("ul");
+      data.sources.forEach(function (s) {
+        var li = document.createElement("li");
+        var a = document.createElement("a");
+        a.href = s.url;
+        a.textContent = s.title;
+        li.appendChild(a);
+        ul.appendChild(li);
+      });
+      answerEl.appendChild(ul);
+    }
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var question = document.getElementById("ask-ai-question").value;
+    var tokenInput = document.querySelector('input[name="cf-turnstile-response"]');
+
+    answerEl.textContent = "考え中…";
+
+    fetch(apiBase + "/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: question,
+        turnstileToken: tokenInput ? tokenInput.value : ""
+      })
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("ask failed");
+        return res.json();
+      })
+      .then(function (data) {
+        renderAnswer(data);
+        if (window.turnstile) window.turnstile.reset();
+      })
+      .catch(function () {
+        answerEl.textContent = "回答の取得に失敗しました。もう一度お試しください。";
+      });
+  });
+})();
+</script>
+
+{{- end }}{{/* end main */}}

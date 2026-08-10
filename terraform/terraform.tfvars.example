@@ -2,3 +2,6 @@
 
 turnstile_secret = "0x4AAAAAAA..."   # Cloudflare Turnstile SECRET key (server-side)
 admin_api_key    = "generate-a-long-random-string-here"  # e.g. `openssl rand -hex 32`
+
+voyage_api_key    = "pa-..."    # Voyage AI API key (https://dashboard.voyageai.com) — embeddings
+anthropic_api_key = "sk-ant-..." # Anthropic API key (https://console.anthropic.com) — Claude Haiku 4.5 answers

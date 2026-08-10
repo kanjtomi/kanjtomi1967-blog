@@ -169,6 +169,9 @@ except ACM which is `us-east-1`):
 - Apex-redirect CloudFront distribution ID: `E2C6IE1U5L07Z1`
 - Comments API Gateway endpoint: `https://0fr1eq5b4j.execute-api.ap-northeast-1.amazonaws.com`
 - Lambda function name: `blog-comments`
+- RAG index S3 bucket: `www.kanjtomi1967.net-rag-index`
+- RAG Lambda function name: `blog-rag`
+- RAG API Gateway endpoint: `https://xaq4ljfx63.execute-api.ap-northeast-1.amazonaws.com`
 - Route 53 hosted zone: `kanjtomi1967.net` (pre-existing, referenced via data source, not managed by this Terraform)
 - Jenkins job name: `BlogDeploy`, running on a local Windows Jenkins instance, triggered by Poll SCM (`H/5 * * * *`)
 - GitHub repo: `https://github.com/kanjtomi/kanjtomi1967-blog` (public)
@@ -213,6 +216,68 @@ publishing), protected by Cloudflare Turnstile.
   (`mvn package` → `target/comments-lambda.jar`), which Terraform's
   `aws_lambda_function.comments` deploys directly. This build step must run
   before `terraform apply` picks up changes to the Lambda code.
+
+## RAG Search (Voyage + Lambda + S3)
+
+"AI に聞く" — a RAG-based natural-language search over the blog's own posts, shown
+on the search page (`/search/`) above the existing PaperMod/fuse.js keyword search.
+Answers are grounded only in the blog's content; the model is told to say so plainly
+when a question isn't covered rather than answering from outside knowledge.
+
+- **Indexing (build-time, not a Lambda)**: `rag-index/`, a Java 17/Maven CLI. Reads
+  every non-draft post under `content/posts/`, splits each into chunks (by `##`
+  heading, falling back to ~1500-char sliding windows for long/heading-less
+  sections), embeds each chunk via the **Voyage AI** embeddings API
+  (`voyage-3-lite`), and uploads a single `index.json` (array of
+  `{id, slug, title, url, chunkText, embedding}`) to a dedicated private S3 bucket
+  (`www.kanjtomi1967.net-rag-index`). Runs on every Jenkins deploy (`Rebuild RAG
+  Index` stage, between `Build` and `Deploy`), so the index always reflects the
+  latest posts.
+- **Query backend**: `lambda-rag/`, a Java 17 Lambda (`blog-rag`) behind its own
+  API Gateway HTTP API, single route `POST /ask`:
+  - Verifies the Cloudflare Turnstile token (reuses `params.turnstileSiteKey`;
+    same verification pattern as the comment system, duplicated rather than
+    shared between the two Lambdas)
+  - Downloads `index.json` from S3 once per execution environment (cold start),
+    holds it in memory across warm invocations
+  - Embeds the incoming question via Voyage AI, ranks all chunks by cosine
+    similarity in memory (brute-force — fine at this corpus size, no vector DB),
+    takes the top 4
+  - Calls Claude (`com.anthropic:anthropic-java`, model `claude-haiku-4-5`) with
+    the retrieved chunks as grounding context
+  - Returns `{answer, sources: [{title, url}]}`
+  - The API Gateway stage also has a conservative throttle (burst 5 / rate 2) as
+    a second line of defense against a scripted caller running up the Claude bill
+- **Frontend**: `layouts/search.html` (theme override of PaperMod's default
+  search page) — vanilla JS, same style as `layouts/_partials/comments.html`.
+- **Config values**: `params.ragApiBase` in `config.toml` (public — safe to
+  commit, same as `commentsApiBase`). The Voyage AI key and Anthropic API key
+  stay in `terraform.tfvars` (gitignored), passed to the Lambda as environment
+  variables via Terraform.
+- **Manual setup required before this goes live** (not automated by me — infra
+  changes and secrets are the user's call):
+  1. Create a Voyage AI account/API key (https://dashboard.voyageai.com) and an
+     Anthropic API key (https://console.anthropic.com)
+  2. Add `voyage_api_key` and `anthropic_api_key` to `terraform/terraform.tfvars`
+     (see `terraform/terraform.tfvars.example`)
+  3. `terraform apply` from `terraform/` (creates the S3 bucket, Lambda, API
+     Gateway — same review process as any other infra change)
+  4. Set `params.ragApiBase` in `config.toml` to the `terraform output
+     rag_api_endpoint` value
+  5. Add a Jenkins secret-text credential named `voyage-api-key` (Manage Jenkins
+     → Credentials) so the `Rebuild RAG Index` stage can call Voyage AI
+  6. Confirm the IAM identity behind the existing `aws-blog-deploy-creds` Jenkins
+     credential has `s3:PutObject` on `www.kanjtomi1967.net-rag-index` (Terraform
+     only grants the Lambda's *read* access to that bucket; the Jenkins indexer
+     needs *write* access using the same deploy credentials already used for
+     `aws s3 sync`)
+- **Build**: like `lambda-comments/`, `lambda-rag/` is a Maven project producing
+  a shaded fat JAR (`mvn package` → `target/rag-lambda.jar`), which Terraform's
+  `aws_lambda_function.rag` deploys directly — build before `terraform apply`.
+- **Cost**: Voyage AI's free tier comfortably covers a personal blog's corpus;
+  Claude Haiku 4.5 calls are pennies per question and gated by Turnstile + API
+  Gateway throttling; the extra Lambda/API Gateway/S3 usage is within or near
+  free tier, similar to the comment system.
 
 ## Out of Scope
 

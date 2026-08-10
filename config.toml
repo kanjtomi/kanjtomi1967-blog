@@ -2,6 +2,7 @@ baseURL = "https://www.kanjtomi1967.net/"
 languageCode = "ja"
 title = "Kanji's Tech Notes"
 theme = "PaperMod"
+hasCJKLanguage = true
 
 enableRobotsTXT = true
 buildDrafts = false
@@ -10,6 +11,9 @@ buildExpired = false
 
 [pagination]
   pagerSize = 10
+
+[outputs]
+  home = ["HTML", "RSS", "JSON"]
 
 [params]
   env = "production"
@@ -31,10 +35,21 @@ buildExpired = false
   comments = true
   turnstileSiteKey = "0x4AAAAAAEG_N4t-dvN2MMCh"
   commentsApiBase = "https://0fr1eq5b4j.execute-api.ap-northeast-1.amazonaws.com"
+  ragApiBase = "https://xaq4ljfx63.execute-api.ap-northeast-1.amazonaws.com"
 
   [params.homeInfoParams]
     Title = "こんにちは 👋"
     Content = "AWS / AI-native インフラ / エンタープライズサポートに関する技術メモを書いています。"
+
+  [params.fuseOpts]
+    isCaseSensitive = false
+    shouldSort = true
+    location = 0
+    distance = 1000
+    threshold = 0.3
+    minMatchCharLength = 2
+    limit = 10
+    keys = ["title", "tags", "permalink", "summary", "content"]
 
 [menu]
   [[menu.main]]

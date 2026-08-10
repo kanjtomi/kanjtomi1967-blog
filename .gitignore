@@ -8,3 +8,6 @@ resources/
 .terraform.lock.hcl
 terraform.tfvars
 lambda-comments/target/
+lambda-rag/target/
+rag-index/target/
+dependency-reduced-pom.xml

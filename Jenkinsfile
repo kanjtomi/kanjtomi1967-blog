@@ -7,8 +7,9 @@ pipeline {
 
     environment {
         // Replace with values from `terraform output` after infra is provisioned
-        BUCKET_NAME = 'www.kanjtomi1967.net'
-        DIST_ID     = 'E1E2XGWP46PS1T'
+        BUCKET_NAME     = 'www.kanjtomi1967.net'
+        DIST_ID         = 'E1E2XGWP46PS1T'
+        RAG_BUCKET_NAME = 'www.kanjtomi1967.net-rag-index'
     }
 
     stages {
@@ -24,6 +25,18 @@ pipeline {
         stage('Build') {
             steps {
                 bat 'hugo --minify'
+            }
+        }
+
+        stage('Rebuild RAG Index') {
+            steps {
+                bat 'mvn -f rag-index\\pom.xml -q package'
+                withCredentials([
+                    string(credentialsId: 'voyage-api-key', variable: 'VOYAGE_API_KEY'),
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-blog-deploy-creds']
+                ]) {
+                    bat 'java -jar rag-index\\target\\rag-index.jar'
+                }
             }
         }
 
