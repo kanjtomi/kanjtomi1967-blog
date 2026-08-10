@@ -10,6 +10,9 @@ pipeline {
         BUCKET_NAME     = 'www.kanjtomi1967.net'
         DIST_ID         = 'E1E2XGWP46PS1T'
         RAG_BUCKET_NAME = 'www.kanjtomi1967.net-rag-index'
+        // rag-index uses the AWS Java SDK, which only reads AWS_REGION (not
+        // AWS_DEFAULT_REGION, which the aws CLI in the Deploy stage relies on).
+        AWS_REGION      = 'ap-northeast-1'
     }
 
     stages {
