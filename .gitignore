@@ -11,3 +11,5 @@ lambda-comments/target/
 lambda-rag/target/
 rag-index/target/
 dependency-reduced-pom.xml
+mcp-blog-sample/.venv/
+mcp-blog-sample/__pycache__/
