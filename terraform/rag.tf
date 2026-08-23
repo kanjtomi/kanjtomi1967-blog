@@ -20,6 +20,12 @@ variable "rag_lambda_jar_path" {
   default     = "../lambda-rag/target/rag-lambda.jar"
 }
 
+variable "mcp_shared_secret" {
+  description = "Bearer token required on POST /mcp, passed to Claude as the MCP connector's authorization_token so only Anthropic's backend (not random callers) can invoke the search_blog_posts tool"
+  type        = string
+  sensitive   = true
+}
+
 # --- S3 bucket for the embeddings index (private, no public access) ---
 resource "aws_s3_bucket" "rag_index" {
   bucket = "${var.site_subdomain}-rag-index"
@@ -85,6 +91,8 @@ resource "aws_lambda_function" "rag" {
       TURNSTILE_SECRET  = var.turnstile_secret
       VOYAGE_API_KEY    = var.voyage_api_key
       ANTHROPIC_API_KEY = var.anthropic_api_key
+      MCP_SHARED_SECRET = var.mcp_shared_secret
+      MCP_SERVER_URL    = "${aws_apigatewayv2_api.rag.api_endpoint}/mcp"
     }
   }
 }
@@ -117,6 +125,14 @@ resource "aws_apigatewayv2_integration" "rag_lambda" {
 resource "aws_apigatewayv2_route" "post_ask" {
   api_id    = aws_apigatewayv2_api.rag.id
   route_key = "POST /ask"
+  target    = "integrations/${aws_apigatewayv2_integration.rag_lambda.id}"
+}
+
+# Called only by Anthropic's backend (via the MCP connector) during POST /ask,
+# not by the browser - see the MCP_SHARED_SECRET bearer-auth check in mcp().
+resource "aws_apigatewayv2_route" "post_mcp" {
+  api_id    = aws_apigatewayv2_api.rag.id
+  route_key = "POST /mcp"
   target    = "integrations/${aws_apigatewayv2_integration.rag_lambda.id}"
 }
 

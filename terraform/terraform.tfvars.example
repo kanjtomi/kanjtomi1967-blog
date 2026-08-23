@@ -5,3 +5,5 @@ admin_api_key    = "generate-a-long-random-string-here"  # e.g. `openssl rand -h
 
 voyage_api_key    = "pa-..."    # Voyage AI API key (https://dashboard.voyageai.com) — embeddings
 anthropic_api_key = "sk-ant-..." # Anthropic API key (https://console.anthropic.com) — Claude Haiku 4.5 answers
+
+mcp_shared_secret = "generate-a-long-random-string-here"  # e.g. `openssl rand -hex 32` — bearer token for POST /mcp
