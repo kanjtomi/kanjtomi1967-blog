@@ -17,8 +17,23 @@ public class PostParser {
 
     public static Post parse(Path file) throws IOException {
         String content = Files.readString(file);
-        String slug = stripExtension(file.getFileName().toString());
-        String url = "/posts/" + slug + "/";
+        String nameWithoutExt = stripExtension(file.getFileName().toString());
+
+        // Hugo multilingual filenames carry a language suffix, e.g.
+        // "hello-world.ja.md" / "hello-world.en.md". Strip it to recover the
+        // shared slug, and use it to build the language-prefixed URL
+        // (defaultContentLanguageInSubdir = true in config.toml).
+        String lang = "ja";
+        String slug = nameWithoutExt;
+        int langDot = nameWithoutExt.lastIndexOf('.');
+        if (langDot != -1) {
+            String suffix = nameWithoutExt.substring(langDot + 1);
+            if (suffix.equals("ja") || suffix.equals("en")) {
+                lang = suffix;
+                slug = nameWithoutExt.substring(0, langDot);
+            }
+        }
+        String url = "/" + lang + "/posts/" + slug + "/";
 
         String title = slug;
         boolean draft = false;
