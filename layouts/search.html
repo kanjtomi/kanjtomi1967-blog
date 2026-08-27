@@ -21,11 +21,11 @@
 </header>
 
 <section id="ask-ai" style="margin-bottom: 2.5rem;">
-    <h2>AIに聞く</h2>
+    <h2>{{ i18n "ask_ai_heading" }}</h2>
     <form id="ask-ai-form" style="display: flex; flex-direction: column; gap: 0.75rem; max-width: 480px;">
-        <input type="text" id="ask-ai-question" placeholder="このブログについて質問する…" maxlength="300" required>
+        <input type="text" id="ask-ai-question" placeholder="{{ i18n "ask_ai_placeholder" }}" maxlength="300" required>
         <div class="cf-turnstile" data-sitekey="{{ .Site.Params.turnstileSiteKey }}"></div>
-        <button type="submit">質問する</button>
+        <button type="submit">{{ i18n "ask_ai_submit" }}</button>
     </form>
     <div id="ask-ai-answer" style="margin-top: 1rem;"></div>
 </section>
@@ -40,6 +40,8 @@
 <script>
 (function () {
   var apiBase = "{{ .Site.Params.ragApiBase }}";
+  var i18nThinking = "{{ i18n "ask_ai_thinking" }}";
+  var i18nError = "{{ i18n "ask_ai_error" }}";
   var form = document.getElementById("ask-ai-form");
   var answerEl = document.getElementById("ask-ai-answer");
 
@@ -68,7 +70,7 @@
     var question = document.getElementById("ask-ai-question").value;
     var tokenInput = document.querySelector('input[name="cf-turnstile-response"]');
 
-    answerEl.textContent = "考え中…";
+    answerEl.textContent = i18nThinking;
 
     fetch(apiBase + "/ask", {
       method: "POST",
@@ -87,7 +89,7 @@
         if (window.turnstile) window.turnstile.reset();
       })
       .catch(function () {
-        answerEl.textContent = "回答の取得に失敗しました。もう一度お試しください。";
+        answerEl.textContent = i18nError;
       });
   });
 })();

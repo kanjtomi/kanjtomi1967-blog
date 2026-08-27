@@ -1,8 +1,11 @@
 baseURL = "https://www.kanjtomi1967.net/"
-languageCode = "ja"
+locale = "ja"
 title = "Kanji's Tech Notes"
 theme = "PaperMod"
 hasCJKLanguage = true
+
+defaultContentLanguage = "ja"
+defaultContentLanguageInSubdir = true
 
 enableRobotsTXT = true
 buildDrafts = false
@@ -17,13 +20,11 @@ buildExpired = false
 
 [params]
   env = "production"
-  title = "Kanji's Tech Notes"
-  description = "AWS / AI / インフラ技術メモ"
-  keywords = ["AWS", "Hugo", "Jenkins", "AI", "Infra"]
   author = "Kanji"
   DateFormat = "2006-01-02"
   defaultTheme = "auto"
   disableThemeToggle = false
+  displayFullLangName = true
   ShowReadingTime = true
   ShowShareButtons = false
   ShowPostNavLinks = true
@@ -37,10 +38,6 @@ buildExpired = false
   commentsApiBase = "https://0fr1eq5b4j.execute-api.ap-northeast-1.amazonaws.com"
   ragApiBase = "https://xaq4ljfx63.execute-api.ap-northeast-1.amazonaws.com"
 
-  [params.homeInfoParams]
-    Title = "こんにちは 👋"
-    Content = "AWS / AI-native インフラ / エンタープライズサポートに関する技術メモを書いています。"
-
   [params.fuseOpts]
     isCaseSensitive = false
     shouldSort = true
@@ -51,22 +48,66 @@ buildExpired = false
     limit = 10
     keys = ["title", "tags", "permalink", "summary", "content"]
 
-[menu]
-  [[menu.main]]
-    identifier = "posts"
-    name = "記事一覧"
-    url = "/posts/"
-    weight = 10
-  [[menu.main]]
-    identifier = "tags"
-    name = "タグ"
-    url = "/tags/"
-    weight = 20
-  [[menu.main]]
-    identifier = "search"
-    name = "検索"
-    url = "/search/"
-    weight = 30
+[languages]
+  [languages.ja]
+    label = "日本語"
+    locale = "ja-JP"
+    weight = 1
+    title = "Kanji's Tech Notes"
+
+    [languages.ja.params]
+      description = "AWS / AI / インフラ技術メモ"
+      keywords = ["AWS", "Hugo", "Jenkins", "AI", "Infra"]
+
+      [languages.ja.params.homeInfoParams]
+        Title = "こんにちは 👋"
+        Content = "AWS / AI-native インフラ / エンタープライズサポートに関する技術メモを書いています。"
+
+    [[languages.ja.menu.main]]
+      identifier = "posts"
+      name = "記事一覧"
+      pageRef = "/posts/"
+      weight = 10
+    [[languages.ja.menu.main]]
+      identifier = "tags"
+      name = "タグ"
+      pageRef = "/tags/"
+      weight = 20
+    [[languages.ja.menu.main]]
+      identifier = "search"
+      name = "検索"
+      pageRef = "/search/"
+      weight = 30
+
+  [languages.en]
+    label = "English"
+    locale = "en-US"
+    weight = 2
+    title = "Kanji's Tech Notes"
+
+    [languages.en.params]
+      description = "Tech notes on AWS / AI / Infra"
+      keywords = ["AWS", "Hugo", "Jenkins", "AI", "Infra"]
+
+      [languages.en.params.homeInfoParams]
+        Title = "Hello 👋"
+        Content = "Notes on AWS, AI-native infra, and enterprise support work."
+
+    [[languages.en.menu.main]]
+      identifier = "posts"
+      name = "Posts"
+      pageRef = "/posts/"
+      weight = 10
+    [[languages.en.menu.main]]
+      identifier = "tags"
+      name = "Tags"
+      pageRef = "/tags/"
+      weight = 20
+    [[languages.en.menu.main]]
+      identifier = "search"
+      name = "Search"
+      pageRef = "/search/"
+      weight = 30
 
 [taxonomies]
   tag = "tags"

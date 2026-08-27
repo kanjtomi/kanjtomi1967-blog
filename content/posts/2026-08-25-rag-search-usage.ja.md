@@ -5,13 +5,13 @@ tags: ["blog", "aws", "rag", "ai"]
 draft: false
 ---
 
-このブログの[検索ページ](/search/)には、キーワード検索とは別に「AIに聞く」という
+このブログの[検索ページ](/ja/search/)には、キーワード検索とは別に「AIに聞く」という
 RAG(Retrieval-Augmented Generation)ベースの自然言語検索を用意しています。
 この記事では使い方と、裏側でどう動いているかを簡単にまとめます。
 
 ## 使い方
 
-1. [`/search/`](/search/) を開く
+1. [`/search/`](/ja/search/) を開く
 2. ページ上部の既存キーワード検索(PaperMod標準のfuse.js)とは別に、
    「AIに聞く」の質問欄が表示される
 3. 自然文で質問を入力する
