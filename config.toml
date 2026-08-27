@@ -74,10 +74,20 @@ buildExpired = false
       pageRef = "/tags/"
       weight = 20
     [[languages.ja.menu.main]]
+      identifier = "hobby"
+      name = "趣味の部屋"
+      pageRef = "/hobby/"
+      weight = 30
+    [[languages.ja.menu.main]]
+      identifier = "history"
+      name = "履歴の部屋"
+      pageRef = "/history/"
+      weight = 40
+    [[languages.ja.menu.main]]
       identifier = "search"
       name = "検索"
       pageRef = "/search/"
-      weight = 30
+      weight = 50
 
   [languages.en]
     label = "English"
@@ -104,10 +114,20 @@ buildExpired = false
       pageRef = "/tags/"
       weight = 20
     [[languages.en.menu.main]]
+      identifier = "hobby"
+      name = "Hobby Room"
+      pageRef = "/hobby/"
+      weight = 30
+    [[languages.en.menu.main]]
+      identifier = "history"
+      name = "History Room"
+      pageRef = "/history/"
+      weight = 40
+    [[languages.en.menu.main]]
       identifier = "search"
       name = "Search"
       pageRef = "/search/"
-      weight = 30
+      weight = 50
 
 [taxonomies]
   tag = "tags"
