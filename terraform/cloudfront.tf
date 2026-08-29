@@ -48,12 +48,21 @@ resource "aws_cloudfront_distribution" "site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
 
+  # Photo-upload feature (photos.tf): objects live at S3 key "photos/..."
+  # and are served at the matching URL path "/photos/...", so no origin_path
+  # stripping is needed.
+  origin {
+    domain_name              = aws_s3_bucket.photos.bucket_regional_domain_name
+    origin_id                = "s3-photos-origin"
+    origin_access_control_id = aws_cloudfront_origin_access_control.site.id
+  }
+
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD"]
-    cached_methods          = ["GET", "HEAD"]
-    target_origin_id        = "s3-site-origin"
-    viewer_protocol_policy  = "redirect-to-https"
-    compress                = true
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "s3-site-origin"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
 
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6" # AWS managed "CachingOptimized"
 
@@ -63,11 +72,24 @@ resource "aws_cloudfront_distribution" "site" {
     }
   }
 
+  # Uploaded photos are individual objects (not directory-style paths), so
+  # this behavior skips the url_rewrite function entirely.
+  ordered_cache_behavior {
+    path_pattern           = "/photos/*"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "s3-photos-origin"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6" # AWS managed "CachingOptimized"
+  }
+
   # SPA/Hugo-style 404 handling: Hugo generates its own 404.html
   custom_error_response {
-    error_code            = 404
-    response_code         = 404
-    response_page_path    = "/404.html"
+    error_code         = 404
+    response_code      = 404
+    response_page_path = "/404.html"
   }
 
   restrictions {
@@ -124,10 +146,10 @@ resource "aws_cloudfront_distribution" "apex_redirect" {
 
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD"]
-    cached_methods          = ["GET", "HEAD"]
-    target_origin_id        = "unused-origin"
-    viewer_protocol_policy  = "redirect-to-https"
-    compress                = true
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "unused-origin"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
 
     cache_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # AWS managed "CachingDisabled"
 

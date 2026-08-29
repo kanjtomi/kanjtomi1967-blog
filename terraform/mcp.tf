@@ -2,10 +2,7 @@
 # Add this file to terraform/ alongside the existing lambda-rag / lambda-comments resources.
 # It reuses the existing RAG index bucket (read-only) and its own API Gateway HTTP API.
 
-variable "voyage_api_key" {
-  type      = string
-  sensitive = true
-}
+# voyage_api_key is declared in rag.tf and reused here.
 
 variable "mcp_bearer_token" {
   description = "Shared secret Claude Desktop/Code sends as 'Authorization: Bearer <token>'."
@@ -56,8 +53,8 @@ resource "aws_lambda_function" "mcp" {
   environment {
     variables = {
       RAG_INDEX_BUCKET = aws_s3_bucket.rag_index.bucket # reuse existing bucket resource
-      VOYAGE_API_KEY    = var.voyage_api_key
-      MCP_BEARER_TOKEN  = var.mcp_bearer_token
+      VOYAGE_API_KEY   = var.voyage_api_key
+      MCP_BEARER_TOKEN = var.mcp_bearer_token
     }
   }
 }

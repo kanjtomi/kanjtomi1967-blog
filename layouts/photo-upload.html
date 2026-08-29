@@ -1,0 +1,108 @@
+{{- define "main" }}
+
+<header class="page-header">
+    <h1>{{ .Title }}</h1>
+</header>
+
+<section id="photo-upload" style="max-width: 480px;">
+  <div style="margin-bottom: 1.5rem;">
+    <label for="photo-upload-api-key">{{ i18n "photo_upload_api_key_label" }}</label><br>
+    <input type="password" id="photo-upload-api-key" style="width: 100%;" autocomplete="off">
+    <button type="button" id="photo-upload-api-key-save" style="margin-top: 0.5rem;">{{ i18n "photo_upload_api_key_save" }}</button>
+  </div>
+
+  <div style="margin-bottom: 1.5rem;">
+    <label for="photo-upload-input">{{ i18n "photo_upload_choose_files" }}</label><br>
+    <input type="file" id="photo-upload-input" accept="image/*" multiple style="margin-top: 0.5rem;">
+  </div>
+
+  <ul id="photo-upload-list" style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 1rem;"></ul>
+</section>
+
+<script>
+(function () {
+  var apiBase = "{{ .Site.Params.photoUploadApiBase }}";
+  var i18nUploading = "{{ i18n "photo_upload_uploading" }}";
+  var i18nSuccess = "{{ i18n "photo_upload_success" }}";
+  var i18nError = "{{ i18n "photo_upload_error" }}";
+  var i18nCopy = "{{ i18n "photo_upload_copy" }}";
+  var i18nCopied = "{{ i18n "photo_upload_copied" }}";
+
+  var STORAGE_KEY = "photoUploadApiKey";
+  var keyInput = document.getElementById("photo-upload-api-key");
+  var saveBtn = document.getElementById("photo-upload-api-key-save");
+  var fileInput = document.getElementById("photo-upload-input");
+  var list = document.getElementById("photo-upload-list");
+
+  keyInput.value = localStorage.getItem(STORAGE_KEY) || "";
+
+  saveBtn.addEventListener("click", function () {
+    localStorage.setItem(STORAGE_KEY, keyInput.value);
+  });
+
+  fileInput.addEventListener("change", function () {
+    var files = Array.prototype.slice.call(fileInput.files);
+    files.forEach(uploadFile);
+    fileInput.value = "";
+  });
+
+  function uploadFile(file) {
+    var item = document.createElement("li");
+    item.textContent = file.name + ": " + i18nUploading;
+    list.insertBefore(item, list.firstChild);
+
+    var apiKey = localStorage.getItem(STORAGE_KEY) || "";
+
+    fetch(apiBase + "/presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+      body: JSON.stringify({ contentType: file.type })
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("presign failed");
+        return res.json();
+      })
+      .then(function (data) {
+        return fetch(data.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file
+        }).then(function (putRes) {
+          if (!putRes.ok) throw new Error("upload failed");
+          return data.publicUrl;
+        });
+      })
+      .then(function (publicUrl) {
+        item.textContent = "";
+
+        var strong = document.createElement("strong");
+        strong.textContent = i18nSuccess + ": ";
+
+        var a = document.createElement("a");
+        a.href = publicUrl;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = publicUrl;
+
+        var copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.textContent = i18nCopy;
+        copyBtn.style.marginLeft = "0.5rem";
+        copyBtn.addEventListener("click", function () {
+          navigator.clipboard.writeText("![](" + publicUrl + ")").then(function () {
+            copyBtn.textContent = i18nCopied;
+          });
+        });
+
+        item.appendChild(strong);
+        item.appendChild(a);
+        item.appendChild(copyBtn);
+      })
+      .catch(function () {
+        item.textContent = file.name + ": " + i18nError;
+      });
+  }
+})();
+</script>
+
+{{- end }}{{/* end main */}}

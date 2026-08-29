@@ -37,6 +37,9 @@ buildExpired = false
   turnstileSiteKey = "0x4AAAAAAEG_N4t-dvN2MMCh"
   commentsApiBase = "https://0fr1eq5b4j.execute-api.ap-northeast-1.amazonaws.com"
   ragApiBase = "https://xaq4ljfx63.execute-api.ap-northeast-1.amazonaws.com"
+  # Set after `terraform apply` (terraform/photos.tf) to the
+  # photo_upload_api_endpoint output — see CLAUDE.md's "Photo Upload" section.
+  photoUploadApiBase = ""
 
   [params.fuseOpts]
     isCaseSensitive = false

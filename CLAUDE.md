@@ -279,6 +279,68 @@ when a question isn't covered rather than answering from outside knowledge.
   Gateway throttling; the extra Lambda/API Gateway/S3 usage is within or near
   free tier, similar to the comment system.
 
+## Photo Upload (iPhone → S3 via presigned URL)
+
+A private, owner-only page for uploading photos from an iPhone straight to S3,
+without going through git/Jenkins. Not linked from the site nav — reached
+directly at `/photo-upload/` (bookmark it, or "Add to Home Screen" in Safari
+for one-tap access). Uploaded photos are immediately public at a stable URL for use in post
+Markdown (`![](...)`) — no need to commit binary files to the Hugo repo.
+
+- **Storage**: dedicated private S3 bucket (`www.kanjtomi1967.net-photos`),
+  served publicly through the **existing main CloudFront distribution** (no
+  new distribution/domain/cert) via an added origin + `ordered_cache_behavior`
+  for path pattern `/photos/*`. Object keys are `photos/{year}/{uuid}.{ext}`,
+  which line up 1:1 with their public URL
+  (`https://www.kanjtomi1967.net/photos/{year}/{uuid}.{ext}`), so no
+  `origin_path` stripping is needed.
+- **Backend**: single Java 17 Lambda (`lambda-photo-upload/`, function
+  `blog-photo-upload`) behind its own API Gateway HTTP API, single route:
+  - `POST /presign` — requires `x-api-key` header (reuses the same
+    `admin_api_key` as the comment system's `/admin/*` routes), body
+    `{contentType}`. Validates `contentType` against an allowlist (jpeg, png,
+    heic, heif, webp, gif), derives the S3 key's extension from it (never from
+    a client-supplied filename — sidesteps sanitization/path-traversal
+    concerns entirely), and returns a short-lived (5 min) presigned S3 `PUT`
+    URL plus the resulting public URL. The Lambda's IAM role only has
+    `s3:PutObject` — it never reads or lists the bucket.
+  - The actual image bytes never pass through Lambda/API Gateway — the
+    browser `PUT`s the file directly to the presigned S3 URL. This needs a
+    CORS rule on the photos bucket itself (`aws_s3_bucket_cors_configuration`),
+    independent of the presign signature.
+- **Frontend**: `layouts/photo-upload.html` (custom layout, `content/photo-
+  upload.{ja,en}.md`) — vanilla JS, same style as `layouts/search.html` /
+  `layouts/_partials/comments.html`. The API key is entered once and kept in
+  `localStorage` (per-browser, never sent anywhere except the `x-api-key`
+  header). Selecting one or more photos uploads each via the presign-then-PUT
+  flow above and shows the resulting public URL with a "copy Markdown" button.
+- **Config values**: `params.photoUploadApiBase` in `config.toml` (public —
+  safe to commit, same pattern as `commentsApiBase`/`ragApiBase`); empty until
+  the manual setup below fills it in.
+- **Manual setup required before this goes live** (not automated by me — infra
+  changes and secrets are the user's call):
+  1. `mvn -f lambda-photo-upload/pom.xml package` (produces
+     `target/photo-upload-lambda.jar`)
+  2. `terraform apply` from `terraform/` (creates the S3 bucket, Lambda, API
+     Gateway, and the `/photos/*` behavior on the existing CloudFront
+     distribution — same review process as any other infra change). Reuses
+     the existing `admin_api_key` var — no new secret needed in
+     `terraform.tfvars`.
+  3. Set `params.photoUploadApiBase` in `config.toml` to the `terraform output
+     photo_upload_api_endpoint` value
+  4. Open `https://www.kanjtomi1967.net/ja/photo-upload/` (or `/en/...`) on
+     the iPhone once, enter the `admin_api_key` value, tap Save — it's
+     remembered from then on in that browser
+- **Build**: like `lambda-comments/`/`lambda-rag/`, `lambda-photo-upload/` is a
+  Maven project producing a shaded fat JAR, which Terraform's
+  `aws_lambda_function.photo_upload` deploys directly — build before
+  `terraform apply`. Not part of the Jenkins pipeline (same as the other two
+  Lambdas — Jenkins only builds/deploys the Hugo site and rebuilds the RAG
+  index).
+- **Cost**: presign calls are cheap Lambda/API Gateway invocations; actual
+  storage/egress is S3 + CloudFront, both within or near free tier for a
+  personal photo volume.
+
 ## Out of Scope
 
 - No user login/accounts (comments are anonymous + name field only)
