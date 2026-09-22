@@ -7,13 +7,16 @@
 #   podman build -t comments-service:local .
 #   (or: docker build -t comments-service:local .)
 
-FROM maven:3.9-eclipse-temurin-17 AS build
+# Fully-qualified (docker.io) image refs: RHEL/podman's default short-name
+# resolution prompts interactively to pick a registry otherwise, which hangs
+# any non-interactive (e.g. CI) build.
+FROM docker.io/library/maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src
 RUN mvn -q -DskipTests package
 
-FROM eclipse-temurin:17-jre-alpine
+FROM docker.io/library/eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=build /app/target/comments-lambda.jar app.jar
 
