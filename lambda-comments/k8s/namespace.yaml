@@ -1,0 +1,6 @@
+# Isolated namespace for the k8s learning/staging replica of the comments service.
+# Nothing in this namespace is part of production traffic.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: blog-staging

@@ -1,0 +1,9 @@
+# Non-secret configuration for the comments-service staging replica.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: comments-config
+  namespace: blog-staging
+data:
+  BUCKET_NAME: "www.kanjtomi1967.net-comments"
+  AWS_REGION: "ap-northeast-1"
