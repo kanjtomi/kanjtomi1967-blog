@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: comments-service
-          image: comments-service:local
+          image: localhost/comments-service:local
           imagePullPolicy: Never   # image is loaded directly into containerd, no registry
           ports:
             - containerPort: 8080
