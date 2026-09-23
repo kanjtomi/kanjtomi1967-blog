@@ -63,9 +63,10 @@ the site via the pipeline defined in `Jenkinsfile`:
 **Windows-specific notes:**
 
 - Use `bat` steps (not `sh`) in the Jenkinsfile, since the Jenkins agent runs on Windows
-- **Hugo** and **AWS CLI** must be installed on the Windows machine and available on `PATH`
-  for the Jenkins service/agent (check with `hugo version` and `aws --version` from the
-  same context Jenkins runs as, e.g. as a Windows service account)
+- **Hugo**, **AWS CLI**, and **Trivy** must be installed on the Windows machine and
+  available on `PATH` for the Jenkins service/agent (check with `hugo version`,
+  `aws --version`, and `trivy --version` from the same context Jenkins runs as, e.g.
+  as a Windows service account). Trivy: `choco install trivy` or `scoop install trivy`.
 - **Trigger**: since Jenkins is local (not internet-reachable), GitHub cannot send a
   webhook to it directly. Use one of:
   - **Poll SCM** (`H/5 * * * *` — Jenkins checks GitHub every 5 min for new commits), simplest, no extra setup
@@ -279,67 +280,35 @@ when a question isn't covered rather than answering from outside knowledge.
   Gateway throttling; the extra Lambda/API Gateway/S3 usage is within or near
   free tier, similar to the comment system.
 
-## Photo Upload (iPhone → S3 via presigned URL)
+## Security Scanning (Trivy)
 
-A private, owner-only page for uploading photos from an iPhone straight to S3,
-without going through git/Jenkins. Not linked from the site nav — reached
-directly at `/photo-upload/` (bookmark it, or "Add to Home Screen" in Safari
-for one-tap access). Uploaded photos are immediately public at a stable URL for use in post
-Markdown (`![](...)`) — no need to commit binary files to the Hugo repo.
+A `Security Scan` stage runs in the Jenkins pipeline between `Rebuild RAG Index`
+and `Deploy`. A single `trivy fs --scanners vuln,misconfig,secret .` pass covers:
 
-- **Storage**: dedicated private S3 bucket (`www.kanjtomi1967.net-photos`),
-  served publicly through the **existing main CloudFront distribution** (no
-  new distribution/domain/cert) via an added origin + `ordered_cache_behavior`
-  for path pattern `/photos/*`. Object keys are `photos/{year}/{uuid}.{ext}`,
-  which line up 1:1 with their public URL
-  (`https://www.kanjtomi1967.net/photos/{year}/{uuid}.{ext}`), so no
-  `origin_path` stripping is needed.
-- **Backend**: single Java 17 Lambda (`lambda-photo-upload/`, function
-  `blog-photo-upload`) behind its own API Gateway HTTP API, single route:
-  - `POST /presign` — requires `x-api-key` header (reuses the same
-    `admin_api_key` as the comment system's `/admin/*` routes), body
-    `{contentType}`. Validates `contentType` against an allowlist (jpeg, png,
-    heic, heif, webp, gif), derives the S3 key's extension from it (never from
-    a client-supplied filename — sidesteps sanitization/path-traversal
-    concerns entirely), and returns a short-lived (5 min) presigned S3 `PUT`
-    URL plus the resulting public URL. The Lambda's IAM role only has
-    `s3:PutObject` — it never reads or lists the bucket.
-  - The actual image bytes never pass through Lambda/API Gateway — the
-    browser `PUT`s the file directly to the presigned S3 URL. This needs a
-    CORS rule on the photos bucket itself (`aws_s3_bucket_cors_configuration`),
-    independent of the presign signature.
-- **Frontend**: `layouts/photo-upload.html` (custom layout, `content/photo-
-  upload.{ja,en}.md`) — vanilla JS, same style as `layouts/search.html` /
-  `layouts/_partials/comments.html`. The API key is entered once and kept in
-  `localStorage` (per-browser, never sent anywhere except the `x-api-key`
-  header). Selecting one or more photos uploads each via the presign-then-PUT
-  flow above and shows the resulting public URL with a "copy Markdown" button.
-- **Config values**: `params.photoUploadApiBase` in `config.toml` (public —
-  safe to commit, same pattern as `commentsApiBase`/`ragApiBase`); empty until
-  the manual setup below fills it in.
-- **Manual setup required before this goes live** (not automated by me — infra
-  changes and secrets are the user's call):
-  1. `mvn -f lambda-photo-upload/pom.xml package` (produces
-     `target/photo-upload-lambda.jar`)
-  2. `terraform apply` from `terraform/` (creates the S3 bucket, Lambda, API
-     Gateway, and the `/photos/*` behavior on the existing CloudFront
-     distribution — same review process as any other infra change). Reuses
-     the existing `admin_api_key` var — no new secret needed in
-     `terraform.tfvars`.
-  3. Set `params.photoUploadApiBase` in `config.toml` to the `terraform output
-     photo_upload_api_endpoint` value
-  4. Open `https://www.kanjtomi1967.net/ja/photo-upload/` (or `/en/...`) on
-     the iPhone once, enter the `admin_api_key` value, tap Save — it's
-     remembered from then on in that browser
-- **Build**: like `lambda-comments/`/`lambda-rag/`, `lambda-photo-upload/` is a
-  Maven project producing a shaded fat JAR, which Terraform's
-  `aws_lambda_function.photo_upload` deploys directly — build before
-  `terraform apply`. Not part of the Jenkins pipeline (same as the other two
-  Lambdas — Jenkins only builds/deploys the Hugo site and rebuilds the RAG
-  index).
-- **Cost**: presign calls are cheap Lambda/API Gateway invocations; actual
-  storage/egress is S3 + CloudFront, both within or near free tier for a
-  personal photo volume.
+- **Dependency vulnerabilities**: Maven `pom.xml` in `lambda-comments/`,
+  `lambda-rag/`, `lambda-photo-upload/`, `rag-index/`, and npm
+  `package-lock.json` in `mcp-server/`
+- **IaC misconfigurations**: `terraform/*.tf` and `lambda-comments/Dockerfile`
+  (the k8s learning/staging container image)
+- **Hardcoded secrets**: repo-wide filesystem scan
+
+`public/`, `themes/`, `hugo-PaperMod/`, and any `target`/`node_modules`/`dist`
+dirs are skipped as build/vendor noise, not as a security exception.
+
+- **Report-only for now**: the stage has no `--exit-code`/`--severity` gate, so
+  findings never fail the build — each `catchError` wrapper in the Jenkinsfile
+  also marks the stage `UNSTABLE` rather than letting a Trivy crash fail the
+  pipeline outright. This was a deliberate choice to avoid blocking deploys on
+  day one; once the report has been reviewed a few times, tighten it by adding
+  `--exit-code 1 --severity CRITICAL,HIGH` to both `trivy fs` calls (and drop
+  the `catchError` wrappers, since they'd otherwise swallow that failure too).
+- **Reports**: written to `security-reports\trivy-report.txt` (human-readable)
+  and `security-reports\trivy-report.json` (machine-readable), archived as
+  Jenkins build artifacts every run (`archiveArtifacts`, `allowEmptyArchive: true`)
+  — view them from the build's Jenkins page even when the stage is green.
+- **Tooling**: requires the `trivy` binary on the Jenkins Windows agent's
+  `PATH` (see Windows-specific notes above) — no Jenkins plugin, no Maven/npm
+  plugin changes to any `pom.xml`/`package.json` needed.
 
 ## Out of Scope
 

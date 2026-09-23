@@ -1,0 +1,17 @@
+# ClusterIP by default (reachable inside the cluster / via kubectl port-forward only).
+# For learning purposes this is intentionally NOT exposed outside the cluster.
+# If you later want to hit it from other machines on your home network, change
+# `type` to NodePort - do not expose it to the internet without a plan for
+# TLS/auth beyond what this staging replica has.
+apiVersion: v1
+kind: Service
+metadata:
+  name: comments-service
+  namespace: blog-staging
+spec:
+  selector:
+    app: comments-service
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP

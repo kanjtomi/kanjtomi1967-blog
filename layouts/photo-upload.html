@@ -6,13 +6,13 @@
 
 <section id="photo-upload" style="max-width: 480px;">
   <div style="margin-bottom: 1.5rem;">
-    <label for="photo-upload-api-key">{{ i18n "photo_upload_api_key_label" }}</label><br>
+    <label for="photo-upload-api-key">APIキー</label><br>
     <input type="password" id="photo-upload-api-key" style="width: 100%;" autocomplete="off">
-    <button type="button" id="photo-upload-api-key-save" style="margin-top: 0.5rem;">{{ i18n "photo_upload_api_key_save" }}</button>
+    <button type="button" id="photo-upload-api-key-save" style="margin-top: 0.5rem;">保存</button>
   </div>
 
   <div style="margin-bottom: 1.5rem;">
-    <label for="photo-upload-input">{{ i18n "photo_upload_choose_files" }}</label><br>
+    <label for="photo-upload-input">写真を選択</label><br>
     <input type="file" id="photo-upload-input" accept="image/*" multiple style="margin-top: 0.5rem;">
   </div>
 
@@ -22,11 +22,11 @@
 <script>
 (function () {
   var apiBase = "{{ .Site.Params.photoUploadApiBase }}";
-  var i18nUploading = "{{ i18n "photo_upload_uploading" }}";
-  var i18nSuccess = "{{ i18n "photo_upload_success" }}";
-  var i18nError = "{{ i18n "photo_upload_error" }}";
-  var i18nCopy = "{{ i18n "photo_upload_copy" }}";
-  var i18nCopied = "{{ i18n "photo_upload_copied" }}";
+  var i18nUploading = "アップロード中…";
+  var i18nSuccess = "完了";
+  var i18nError = "アップロードに失敗しました";
+  var i18nCopy = "Markdownをコピー";
+  var i18nCopied = "コピーしました";
 
   var STORAGE_KEY = "photoUploadApiKey";
   var keyInput = document.getElementById("photo-upload-api-key");

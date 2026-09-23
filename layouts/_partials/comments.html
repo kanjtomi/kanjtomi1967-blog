@@ -1,15 +1,15 @@
 <section id="comments" style="margin-top: 3rem;">
-  <h2>{{ i18n "comments_heading" }}</h2>
+  <h2>コメント</h2>
 
-  <div id="comments-list">{{ i18n "comments_loading" }}</div>
+  <div id="comments-list">読み込み中…</div>
 
   <form id="comment-form" style="margin-top: 2rem; display: flex; flex-direction: column; gap: 0.75rem; max-width: 480px;">
-    <input type="text" id="comment-author" placeholder="{{ i18n "comments_name_placeholder" }}" maxlength="80" required>
-    <textarea id="comment-body" placeholder="{{ i18n "comments_body_placeholder" }}" maxlength="3000" rows="4" required></textarea>
+    <input type="text" id="comment-author" placeholder="お名前" maxlength="80" required>
+    <textarea id="comment-body" placeholder="コメント" maxlength="3000" rows="4" required></textarea>
 
     <div class="cf-turnstile" data-sitekey="{{ .Site.Params.turnstileSiteKey }}"></div>
 
-    <button type="submit">{{ i18n "comments_submit" }}</button>
+    <button type="submit">送信(承認後に公開されます)</button>
     <p id="comment-status" style="font-size: 0.85rem;"></p>
   </form>
 </section>
@@ -18,20 +18,14 @@
 <script>
 (function () {
   var apiBase = "{{ .Site.Params.commentsApiBase }}";
-  var slug = "{{ .File.TranslationBaseName }}";
-  var locale = "{{ .Site.Language.Lang }}" === "ja" ? "ja-JP" : "en-US";
-  var i18nNone = "{{ i18n "comments_none" }}";
-  var i18nSending = "{{ i18n "comments_sending" }}";
-  var i18nSent = "{{ i18n "comments_sent" }}";
-  var i18nSubmitError = "{{ i18n "comments_submit_error" }}";
-  var i18nLoadError = "{{ i18n "comments_load_error" }}";
+  var slug = "{{ .File.BaseFileName }}";
   var listEl = document.getElementById("comments-list");
   var form = document.getElementById("comment-form");
   var statusEl = document.getElementById("comment-status");
 
   function renderComments(comments) {
     if (!comments.length) {
-      listEl.textContent = i18nNone;
+      listEl.textContent = "まだコメントはありません。";
       return;
     }
     listEl.innerHTML = "";
@@ -44,7 +38,7 @@
       date.style.marginLeft = "0.5rem";
       date.style.fontSize = "0.8rem";
       date.style.color = "#888";
-      date.textContent = new Date(c.createdAt).toLocaleString(locale);
+      date.textContent = new Date(c.createdAt).toLocaleString("ja-JP");
       var body = document.createElement("p");
       body.textContent = c.body;
       div.appendChild(author);
@@ -57,7 +51,7 @@
   fetch(apiBase + "/comments?slug=" + encodeURIComponent(slug))
     .then(function (res) { return res.json(); })
     .then(renderComments)
-    .catch(function () { listEl.textContent = i18nLoadError; });
+    .catch(function () { listEl.textContent = "コメントの読み込みに失敗しました。"; });
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
@@ -69,7 +63,7 @@
       turnstileToken: token ? token.value : ""
     };
 
-    statusEl.textContent = i18nSending;
+    statusEl.textContent = "送信中…";
 
     fetch(apiBase + "/comments", {
       method: "POST",
@@ -81,12 +75,12 @@
         return res.json();
       })
       .then(function () {
-        statusEl.textContent = i18nSent;
+        statusEl.textContent = "送信しました。承認後に表示されます。";
         form.reset();
         if (window.turnstile) window.turnstile.reset();
       })
       .catch(function () {
-        statusEl.textContent = i18nSubmitError;
+        statusEl.textContent = "送信に失敗しました。もう一度お試しください。";
       });
   });
 })();

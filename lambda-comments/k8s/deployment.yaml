@@ -1,0 +1,61 @@
+# Staging/learning replica of the comments service. Runs the exact same Handler.java
+# business logic as the production Lambda, behind lambda-comments/HttpAdapter.java
+# instead of API Gateway. Not part of the production deploy path.
+#
+# Secrets referenced here (TURNSTILE_SECRET, ADMIN_API_KEY, AWS_ACCESS_KEY_ID,
+# AWS_SECRET_ACCESS_KEY) are NOT defined in this file - create them yourself with:
+#
+#   kubectl create secret generic comments-secrets -n blog-staging \
+#     --from-literal=TURNSTILE_SECRET=<turnstile secret> \
+#     --from-literal=ADMIN_API_KEY=<admin api key> \
+#     --from-literal=AWS_ACCESS_KEY_ID=<iam access key> \
+#     --from-literal=AWS_SECRET_ACCESS_KEY=<iam secret key>
+#
+# Use a dedicated, scoped-down IAM user (s3:GetObject/PutObject/ListBucket on
+# www.kanjtomi1967.net-comments only) for this - do NOT reuse the aws-blog-deploy-creds
+# credentials here, since those are broader and this cluster is outside AWS's network.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: comments-service
+  namespace: blog-staging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: comments-service
+  template:
+    metadata:
+      labels:
+        app: comments-service
+    spec:
+      containers:
+        - name: comments-service
+          image: localhost/comments-service:local
+          imagePullPolicy: Never   # image is loaded directly into containerd, no registry
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: comments-config
+            - secretRef:
+                name: comments-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
