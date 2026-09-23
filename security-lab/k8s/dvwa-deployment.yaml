@@ -1,0 +1,62 @@
+# Built from the official upstream digininja/DVWA repo's own Dockerfile
+# (php:8-apache base) — see README.md "Building the image" for the exact
+# build steps. NOT one of the old pre-built all-in-one Docker Hub images
+# (see the comment in mariadb-deployment.yaml for why).
+#
+# NEVER expose this outside the cluster — it is intentionally full of
+# unpatched vulnerabilities by design. dvwa-service.yaml is ClusterIP-only
+# on purpose; access it via `kubectl port-forward` only. See README.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dvwa
+  namespace: security-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dvwa
+  template:
+    metadata:
+      labels:
+        app: dvwa
+    spec:
+      containers:
+        - name: dvwa
+          image: localhost/dvwa-app:local
+          imagePullPolicy: Never   # image is loaded directly into containerd, no registry
+          ports:
+            - containerPort: 80
+          env:
+            - name: DB_SERVER
+              value: "mariadb"
+            - name: DB_DATABASE
+              value: "dvwa"
+            - name: DB_USER
+              value: "dvwa"
+            - name: DB_PORT
+              value: "3306"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dvwa-db-secret
+                  key: MARIADB_PASSWORD
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /login.php
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /login.php
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 15

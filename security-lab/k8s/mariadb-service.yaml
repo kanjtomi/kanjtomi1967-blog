@@ -1,0 +1,14 @@
+# ClusterIP only, and named "mariadb" so dvwa-deployment.yaml can reach it
+# at DB_SERVER=mariadb (plain in-namespace DNS name, no FQDN needed).
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb
+  namespace: security-lab
+spec:
+  selector:
+    app: dvwa-mariadb
+  ports:
+    - port: 3306
+      targetPort: 3306
+  type: ClusterIP
