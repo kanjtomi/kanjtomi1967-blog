@@ -168,7 +168,7 @@ pipeline {
                                 scp -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -r site-monitor %SSH_USER%@%RHEL_HOST_IP%:/opt/site-monitor-src
                             '''
                             bat '''
-                                ssh -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes %SSH_USER%@%RHEL_HOST_IP% "cd /opt/site-monitor-src && podman build -t site-monitor:local . && podman save site-monitor:local -o /tmp/site-monitor.tar && ctr -n k8s.io images import /tmp/site-monitor.tar && kubectl apply -f k8s/namespace.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml -f k8s/service.yaml && kubectl -n blog-staging rollout status deployment/site-monitor --timeout=60s"
+                                ssh -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes %SSH_USER%@%RHEL_HOST_IP% "cd /opt/site-monitor-src && podman build -t site-monitor:local . && rm -f /tmp/site-monitor.tar && podman save site-monitor:local -o /tmp/site-monitor.tar && ctr -n k8s.io images import /tmp/site-monitor.tar && rm -f /tmp/site-monitor.tar && kubectl apply -f k8s/namespace.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml -f k8s/service.yaml && kubectl -n blog-staging rollout status deployment/site-monitor --timeout=60s"
                             '''
                         }
                     }
