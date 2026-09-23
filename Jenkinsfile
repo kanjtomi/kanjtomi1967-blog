@@ -100,6 +100,26 @@ pipeline {
             }
         }
 
+        stage('Host Security Scan (Windows)') {
+            steps {
+                // Covers the OS the Jenkins agent itself runs on (pending updates,
+                // Defender status, a handful of CIS-inspired baseline checks) —
+                // complements the repo-level Trivy scan above, which only looks at
+                // source/dependencies/IaC, not the host. Report-only, same as
+                // Security Scan: the script always exits 0, and catchError here is
+                // belt-and-suspenders in case the script itself can't run at all
+                // (e.g. execution policy blocks it).
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    powershell '& "scripts\\security-check-windows.ps1"'
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'security-reports/host-windows-report.txt', allowEmptyArchive: true
+                }
+            }
+        }
+
         stage('Deploy') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',

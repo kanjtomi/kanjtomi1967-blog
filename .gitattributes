@@ -1,0 +1,6 @@
+# Shell scripts must keep LF line endings regardless of the checkout OS —
+# a CRLF shebang line (e.g. "#!/usr/bin/env bash\r") breaks execution on
+# Linux ("bad interpreter" error). Relevant here because this repo is
+# checked out both on the Windows Jenkins host and on the RHEL host running
+# the k8s learning/staging replica (see scripts/security-check-rhel.sh).
+*.sh text eol=lf

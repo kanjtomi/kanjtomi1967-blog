@@ -322,6 +322,43 @@ dirs are skipped as build/vendor noise, not as a security exception.
   `PATH` (see Windows-specific notes above) — no Jenkins plugin, no Maven/npm
   plugin changes to any `pom.xml`/`package.json` needed.
 
+## Security Scanning (Host-level: Windows + RHEL)
+
+Complements the repo-level Trivy scan above, which only looks at
+source/dependencies/IaC checked into this repo, not the machines the
+pipeline and the k8s learning/staging replica actually run on.
+
+- **Windows** (`scripts/security-check-windows.ps1`): checks the Jenkins
+  agent's own host — pending Windows Updates (via the Windows Update Agent
+  COM API), recent hotfix history, Windows Defender status, and a handful of
+  CIS-inspired baseline spot checks (firewall profiles, SMBv1, UAC, RDP
+  NLA, the Windows Update service's startup type). **Wired into Jenkins**:
+  runs as the `Host Security Scan (Windows)` stage, right after `Security
+  Scan` and before `Deploy`. Report-only (always exits 0, plus a
+  `catchError` wrapper same as the other scan stage) — findings never block
+  deploy. Report: `security-reports\host-windows-report.txt`, archived as a
+  build artifact.
+- **RHEL** (`scripts/security-check-rhel.sh`): checks the RHEL host running
+  the k8s learning/staging comments-service replica (see
+  `lambda-comments/k8s/`) — pending `dnf` security updates, OS package CVEs
+  via `trivy rootfs /`, a `trivy image` scan of the two images the replica's
+  `Dockerfile` builds from, and an optional CIS baseline pass via OpenSCAP
+  if `openscap-scanner`/`scap-security-guide` are installed (skipped with a
+  note if not — this project doesn't install them by default, matching the
+  "minimal cost / minimal footprint" ethos elsewhere in this doc). **Not
+  wired into Jenkins**: Jenkins runs on the Windows machine above and has no
+  configured access (SSH credential, or a Jenkins agent installed on the
+  RHEL box) to this host. Run it manually there for now — Claude Code is
+  also installed on that machine, so asking that session to run
+  `bash scripts/security-check-rhel.sh` after pulling the repo works too.
+  Report: `security-reports/host-rhel-report.txt` (plus
+  `security-reports/host-rhel-cis-report.html` if the OpenSCAP pass ran).
+  - **To wire this into Jenkins later**, once SSH access or a Jenkins agent
+    on the RHEL host exists: either an `sshagent`-wrapped remote exec of the
+    script from the existing `BlogDeploy` job, or a proper Jenkins node
+    (`agent { label 'rhel-host' }`) with its own stage — whichever fits how
+    that access ends up being set up.
+
 ## Out of Scope
 
 - No user login/accounts (comments are anonymous + name field only)
