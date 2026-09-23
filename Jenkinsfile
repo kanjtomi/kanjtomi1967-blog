@@ -43,6 +43,42 @@ pipeline {
             }
         }
 
+        stage('Security Scan') {
+            steps {
+                bat 'if not exist security-reports mkdir security-reports'
+                // Single Trivy pass covers dependency vulnerabilities (Maven pom.xml
+                // across lambda-comments/lambda-rag/lambda-photo-upload/rag-index and
+                // npm package-lock.json in mcp-server), IaC misconfigurations
+                // (terraform/ and lambda-comments/Dockerfile), and hardcoded secrets.
+                // Vendored/build output dirs are skipped as noise, not as a security
+                // exception. Report-only for now: no --exit-code/--severity gate, so
+                // findings never fail the build. To start gating on Critical/High once
+                // the report has been reviewed a few times, add
+                // `--exit-code 1 --severity CRITICAL,HIGH` (remove the trailing `bat`
+                // catchError wrapper below at the same time, since it would otherwise
+                // swallow that failure too).
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    bat '''
+                        trivy fs --scanners vuln,misconfig,secret ^
+                            --skip-dirs public,themes,hugo-PaperMod,**/target,**/node_modules,**/dist ^
+                            --format table --output security-reports\\trivy-report.txt .
+                    '''
+                }
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    bat '''
+                        trivy fs --scanners vuln,misconfig,secret ^
+                            --skip-dirs public,themes,hugo-PaperMod,**/target,**/node_modules,**/dist ^
+                            --format json --output security-reports\\trivy-report.json .
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'security-reports/**', allowEmptyArchive: true
+                }
+            }
+        }
+
         stage('Deploy') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
