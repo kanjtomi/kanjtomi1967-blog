@@ -295,6 +295,18 @@ and `Deploy`. A single `trivy fs --scanners vuln,misconfig,secret .` pass covers
 `public/`, `themes/`, `hugo-PaperMod/`, and any `target`/`node_modules`/`dist`
 dirs are skipped as build/vendor noise, not as a security exception.
 
+- **`--offline-scan` + Maven cache warm-up**: Trivy's Java analyzer resolves
+  transitive dependency versions from `pom.xml` by querying remote Maven repos
+  for anything missing from the local `~/.m2` cache. From a cold cache this
+  fires enough rapid requests at Maven Central to get the Jenkins host
+  429-blocked (seen in practice: `FATAL Error ... 429 Too Many Requests`, no
+  report written, `archiveArtifacts` then finds nothing to archive). The stage
+  runs `mvn dependency:resolve` for `lambda-comments/`, `lambda-rag/`, and
+  `lambda-photo-upload/` first (`rag-index/` is already resolved by the
+  `Rebuild RAG Index` stage's `mvn package`) to warm the cache, then passes
+  `--offline-scan` to both `trivy fs` calls so they read only from that cache
+  instead of hitting the network.
+
 - **Report-only for now**: the stage has no `--exit-code`/`--severity` gate, so
   findings never fail the build — each `catchError` wrapper in the Jenkinsfile
   also marks the stage `UNSTABLE` rather than letting a Trivy crash fail the

@@ -46,27 +46,48 @@ pipeline {
         stage('Security Scan') {
             steps {
                 bat 'if not exist security-reports mkdir security-reports'
+                // Trivy's Java analyzer resolves transitive dependency versions by
+                // querying remote Maven repos for any pom not already in the local
+                // ~/.m2 cache. Done from cold, that's enough rapid-fire requests to
+                // Maven Central to get the whole Jenkins host 429-blocked (seen in
+                // practice: FATAL error, no report written). Warm the cache first so
+                // `--offline-scan` below has everything it needs without touching the
+                // network. rag-index is already resolved by the `mvn package` in the
+                // previous stage; the other three Lambda modules aren't built by this
+                // pipeline otherwise, so resolve them explicitly. catchError here too:
+                // a resolve failure should degrade to an incomplete scan, not block deploy.
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    bat 'mvn -f lambda-comments\\pom.xml -q dependency:resolve'
+                }
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    bat 'mvn -f lambda-rag\\pom.xml -q dependency:resolve'
+                }
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    bat 'mvn -f lambda-photo-upload\\pom.xml -q dependency:resolve'
+                }
                 // Single Trivy pass covers dependency vulnerabilities (Maven pom.xml
                 // across lambda-comments/lambda-rag/lambda-photo-upload/rag-index and
                 // npm package-lock.json in mcp-server), IaC misconfigurations
                 // (terraform/ and lambda-comments/Dockerfile), and hardcoded secrets.
                 // Vendored/build output dirs are skipped as noise, not as a security
-                // exception. Report-only for now: no --exit-code/--severity gate, so
-                // findings never fail the build. To start gating on Critical/High once
-                // the report has been reviewed a few times, add
+                // exception. --offline-scan relies on the ~/.m2 cache warmed above
+                // instead of querying Maven Central directly (see comment above).
+                // Report-only for now: no --exit-code/--severity gate, so findings
+                // never fail the build. To start gating on Critical/High once the
+                // report has been reviewed a few times, add
                 // `--exit-code 1 --severity CRITICAL,HIGH` (remove the trailing `bat`
                 // catchError wrapper below at the same time, since it would otherwise
                 // swallow that failure too).
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                     bat '''
-                        trivy fs --scanners vuln,misconfig,secret ^
+                        trivy fs --scanners vuln,misconfig,secret --offline-scan ^
                             --skip-dirs public,themes,hugo-PaperMod,**/target,**/node_modules,**/dist ^
                             --format table --output security-reports\\trivy-report.txt .
                     '''
                 }
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                     bat '''
-                        trivy fs --scanners vuln,misconfig,secret ^
+                        trivy fs --scanners vuln,misconfig,secret --offline-scan ^
                             --skip-dirs public,themes,hugo-PaperMod,**/target,**/node_modules,**/dist ^
                             --format json --output security-reports\\trivy-report.json .
                     '''
