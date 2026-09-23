@@ -50,15 +50,66 @@ mkdir -p "$(dirname "$OUT_FILE")"
     echo ""
     echo "=== OS Package Vulnerabilities (trivy rootfs) ==="
     if command -v trivy >/dev/null 2>&1; then
-        echo "[INFO] Running: trivy rootfs / --scanners vuln --severity CRITICAL,HIGH,MEDIUM,LOW"
+        echo "[INFO] Running: trivy rootfs / --scanners vuln --pkg-types os --severity CRITICAL,HIGH,MEDIUM,LOW"
         echo "[INFO] Requires read access to the RPM database; run as root/sudo for a complete result."
         # This host also carries large, unrelated dev workspaces (e.g. Xilinx/Eclipse
         # projects with hundreds of thousands of small files under /home and /work) that
         # aren't OS packages and aren't what this section cares about — walking them blew
         # past trivy's default 5m timeout in practice ("context deadline exceeded", no
         # results at all). Skip them and raise the timeout as a second line of defense.
-        trivy rootfs / --scanners vuln --severity CRITICAL,HIGH,MEDIUM,LOW --format table \
-            --timeout 15m --skip-dirs /home,/work,/glide 2>&1
+        #
+        # --pkg-types os restricts this to RPM-managed OS packages, matching the "dnf
+        # security updates" section above (without it, trivy also walks every
+        # language-ecosystem package anywhere on the filesystem, including everything
+        # bundled inside this host's unrelated installed software — Oracle, MuleSoft
+        # Anypoint, etc. — producing a 630,000-line report across 93 scan targets).
+        # Even scoped to just OS packages, RHEL's own advisory tracking is granular
+        # enough that a long-unpatched host like this one still returns hundreds of
+        # thousands of individual CVE rows (real findings, not a bug — this host had
+        # 3081 pending dnf security updates at last check). A per-CVE table at that
+        # size isn't something anyone reads top to bottom, so: full detail goes to
+        # its own JSON file, and only a severity summary plus the CRITICAL items
+        # (the subset worth actually reading here) go into the main report.
+        out_dir="$(dirname "$OUT_FILE")"
+        rootfs_json="$out_dir/host-rhel-rootfs-vulns.json"
+        rootfs_trivy_log="$out_dir/host-rhel-rootfs-trivy.log"
+        # stdout (the JSON) and stderr (trivy's own progress/INFO/WARN log lines,
+        # including the vulndb download progress bar) must NOT be merged here — an
+        # earlier version of this script used `2>&1` and that interleaved log text
+        # into the JSON file, corrupting it ("Invalid numeric literal at line 1").
+        trivy rootfs / --scanners vuln --pkg-types os --severity CRITICAL,HIGH,MEDIUM,LOW --format json \
+            --timeout 15m --skip-dirs /home,/work,/glide > "$rootfs_json" 2> "$rootfs_trivy_log"
+        if [ -s "$rootfs_json" ] && command -v jq >/dev/null 2>&1 && jq -e . "$rootfs_json" >/dev/null 2>&1; then
+            # This file can be huge (hundreds of MB - RHEL's advisory tracking is
+            # granular enough that a long-unpatched host returns hundreds of
+            # thousands of CVE rows) so compute all five counts in one jq pass
+            # instead of re-parsing the whole file once per severity.
+            counts="$(jq -r '
+                [.Results[]?.Vulnerabilities[]?.Severity] as $s
+                | [ ($s|length),
+                    ($s|map(select(.=="CRITICAL"))|length),
+                    ($s|map(select(.=="HIGH"))|length),
+                    ($s|map(select(.=="MEDIUM"))|length),
+                    ($s|map(select(.=="LOW"))|length) ]
+                | @tsv
+            ' "$rootfs_json")"
+            IFS="$(printf '\t')" read -r total crit high medium low <<EOF
+$counts
+EOF
+            if [ "${total:-0}" -eq 0 ]; then
+                echo "[PASS] No OS package vulnerabilities at CRITICAL/HIGH/MEDIUM/LOW."
+            else
+                echo "[WARN] $total OS package vulnerabilities (CRITICAL: $crit, HIGH: $high, MEDIUM: $medium, LOW: $low)"
+            fi
+            echo "[INFO] Full per-CVE detail: $rootfs_json"
+            if [ "${crit:-0}" -gt 0 ]; then
+                echo "[WARN] CRITICAL findings:"
+                jq -r '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL") | "    - \(.PkgName) \(.VulnerabilityID): \(.Title // "no title")"] | unique | .[]' \
+                    "$rootfs_json"
+            fi
+        else
+            echo "[INFO] trivy produced no parseable JSON — see $rootfs_trivy_log for what it printed instead"
+        fi
     else
         echo "[INFO] trivy not found on this host — skipping. Install: https://trivy.dev/latest/getting-started/installation/"
     fi

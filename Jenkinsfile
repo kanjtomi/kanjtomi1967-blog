@@ -162,7 +162,13 @@ pipeline {
                             // minutes until the hung process was killed manually. Strip
                             // inherited ACLs and grant read-only to the Jenkins service
                             // account (LocalSystem, well-known SID S-1-5-18) only.
-                            bat 'icacls %SSH_KEY% /inheritance:r /grant:r *S-1-5-18:R'
+                            // icacls' own confirmation text is locale-encoded (mojibake on
+                            // a Japanese Windows console in the Jenkins log) and useless
+                            // here anyway. It writes that line in a way plain `>nul`
+                            // doesn't catch (confirmed: only redirecting both streams
+                            // suppresses it) — exit code alone still surfaces a real
+                            // failure, `bat` fails the step on nonzero exit regardless.
+                            bat 'icacls %SSH_KEY% /inheritance:r /grant:r *S-1-5-18:R >nul 2>&1'
                             bat '''
                                 ssh -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes %SSH_USER%@%RHEL_HOST_IP% "rm -rf /opt/site-monitor-src"
                                 scp -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -r site-monitor %SSH_USER%@%RHEL_HOST_IP%:/opt/site-monitor-src
