@@ -1,0 +1,49 @@
+# Staging/learning replica running the site-monitor uptime/response-time
+# checker against the blog's own public URLs. Unlike comments-service (which
+# is built/deployed manually - see lambda-comments/k8s/README.md), this one
+# is built and deployed automatically by Jenkins (see the Jenkinsfile's
+# "Deploy Site Monitor (RHEL k8s)" stage) since it only needs outbound HTTPS
+# access and carries no secrets.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site-monitor
+  namespace: blog-staging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: site-monitor
+  template:
+    metadata:
+      labels:
+        app: site-monitor
+    spec:
+      containers:
+        - name: site-monitor
+          image: localhost/site-monitor:local
+          imagePullPolicy: Never   # image is loaded directly into containerd, no registry
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: site-monitor-config
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15

@@ -13,6 +13,9 @@ pipeline {
         // rag-index uses the AWS Java SDK, which only reads AWS_REGION (not
         // AWS_DEFAULT_REGION, which the aws CLI in the Deploy stage relies on).
         AWS_REGION      = 'ap-northeast-1'
+        // Home RHEL k8s learning/staging cluster (see lambda-comments/k8s/ and
+        // site-monitor/k8s/) — local network address, not secret.
+        RHEL_HOST_IP    = '192.168.0.200'
     }
 
     stages {
@@ -126,6 +129,33 @@ pipeline {
                                    credentialsId: 'aws-blog-deploy-creds']]) {
                     bat "aws s3 sync .\\public s3://%BUCKET_NAME% --delete"
                     bat "aws cloudfront create-invalidation --distribution-id %DIST_ID% --paths \"/*\""
+                }
+            }
+        }
+
+        stage('Deploy Site Monitor (RHEL k8s)') {
+            steps {
+                // Builds and deploys site-monitor/ (uptime/response-time checker for
+                // the blog's public URLs) to the home RHEL k8s learning/staging
+                // cluster — same registry-free podman-build -> ctr-import pattern as
+                // the manual comments-service replica (lambda-comments/k8s/), but
+                // automated here since this component carries no secrets. See
+                // site-monitor/README.md for details and the manual equivalent.
+                // Report-only in spirit like Security Scan / Host Security Scan
+                // above: cluster being unreachable, or this stage failing outright,
+                // never blocks the actual blog deploy above.
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    withCredentials([sshUserPrivateKey(credentialsId: 'rhel-host-ssh-key',
+                                                        keyFileVariable: 'SSH_KEY',
+                                                        usernameVariable: 'SSH_USER')]) {
+                        bat '''
+                            ssh -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes %SSH_USER%@%RHEL_HOST_IP% "rm -rf /opt/site-monitor-src"
+                            scp -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -r site-monitor %SSH_USER%@%RHEL_HOST_IP%:/opt/site-monitor-src
+                        '''
+                        bat '''
+                            ssh -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes %SSH_USER%@%RHEL_HOST_IP% "cd /opt/site-monitor-src && podman build -t site-monitor:local . && podman save site-monitor:local -o /tmp/site-monitor.tar && ctr -n k8s.io images import /tmp/site-monitor.tar && kubectl apply -f k8s/namespace.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml -f k8s/service.yaml && kubectl -n blog-staging rollout status deployment/site-monitor --timeout=60s"
+                        '''
+                    }
                 }
             }
         }

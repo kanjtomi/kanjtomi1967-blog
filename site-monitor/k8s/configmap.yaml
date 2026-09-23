@@ -1,0 +1,13 @@
+# Non-secret configuration for the site-monitor staging replica. No secrets
+# needed here at all - this app only ever makes outbound HTTPS GETs to the
+# blog's own public URLs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: site-monitor-config
+  namespace: blog-staging
+data:
+  TARGET_URLS: "https://www.kanjtomi1967.net/,https://www.kanjtomi1967.net/search/"
+  CHECK_INTERVAL_SECONDS: "60"
+  TIMEOUT_SECONDS: "10"
+  HISTORY_SIZE: "100"

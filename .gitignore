@@ -14,3 +14,4 @@ dependency-reduced-pom.xml
 mcp-blog-sample/.venv/
 mcp-blog-sample/__pycache__/
 security-reports/
+__pycache__/

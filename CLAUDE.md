@@ -353,11 +353,58 @@ pipeline and the k8s learning/staging replica actually run on.
   `bash scripts/security-check-rhel.sh` after pulling the repo works too.
   Report: `security-reports/host-rhel-report.txt` (plus
   `security-reports/host-rhel-cis-report.html` if the OpenSCAP pass ran).
-  - **To wire this into Jenkins later**, once SSH access or a Jenkins agent
-    on the RHEL host exists: either an `sshagent`-wrapped remote exec of the
-    script from the existing `BlogDeploy` job, or a proper Jenkins node
-    (`agent { label 'rhel-host' }`) with its own stage — whichever fits how
-    that access ends up being set up.
+  - **SSH access from Jenkins to the RHEL host now exists** (see the
+    `rhel-host-ssh-key` credential under Site Monitor below, added for the
+    `Deploy Site Monitor (RHEL k8s)` stage) — this script isn't wired into
+    Jenkins yet, but doing so is now just a matter of adding a stage that
+    reuses that same credential to SSH in and run it, rather than a
+    prerequisite-blocked "later."
+  - **RHEL disk space note**: this host also runs other, unrelated software
+    (Oracle, MuleSoft Anypoint, an active MariaDB instance, etc.) sharing the
+    same root filesystem. It has run critically low on space before (97%
+    full), which silently breaks `trivy rootfs`/`trivy image`/OpenSCAP mid-scan
+    with "No space left on device" rather than a clear error — check `df -h /`
+    first if this script's trivy/OpenSCAP sections come back empty. MariaDB's
+    datadir was relocated to `/glide` (a larger, separate disk also shared
+    with this host's k8s kubelet volumes) to free root space; its socket path
+    was moved to match (`/glide/mysql-data/mysql.sock`, set in both the
+    `[mysqld]` and a new `[client]` section of `/etc/my.cnf` — a bare `mysql`
+    CLI call needs the `[client]` socket override or it looks for the old
+    `/var/lib/mysql/mysql.sock`).
+
+## Site Monitor (RHEL k8s)
+
+Uptime/response-time monitoring for the blog's public URLs (`www.kanjtomi1967.net/`
+and `/search/` by default) — `site-monitor/`, a stdlib-only Python app (no
+pip dependencies, keeps the image small) that periodically HTTP-GETs each
+configured URL and serves a dashboard, JSON status, and Prometheus metrics.
+Full details in `site-monitor/README.md`.
+
+- Deploys as a k8s learning/staging replica on the same home RHEL cluster as
+  `comments-service` (shares the `blog-staging` namespace, otherwise
+  independent) — registry-free `podman build` → `ctr -n k8s.io images import`
+  → `kubectl apply`, same pattern as `lambda-comments/k8s/`.
+- **Unlike `comments-service`, this one is built and deployed automatically**
+  by the `Deploy Site Monitor (RHEL k8s)` Jenkins stage (runs after `Deploy`)
+  — it carries no secrets (only outbound HTTPS to the blog's own public
+  URLs), so there was no reason to keep it manual-only like the comments
+  replica.
+- **Jenkins credential required**: `rhel-host-ssh-key` (kind: "SSH Username
+  with private key", username `root`) — not created automatically, add it
+  manually via Manage Jenkins → Credentials, same as `voyage-api-key`. The
+  private key must be one already present in the RHEL host's
+  `root/.ssh/authorized_keys`.
+- **Windows-side requirement**: `ssh`/`scp` on the Jenkins agent's `PATH` —
+  the Windows 10/11 built-in OpenSSH Client feature
+  (`C:\Windows\System32\OpenSSH\`) covers this; no separate install needed
+  if that optional Windows feature is enabled.
+- Report-only in spirit like `Security Scan`/`Host Security Scan (Windows)`:
+  wrapped in `catchError`, so the RHEL cluster being unreachable never blocks
+  the actual blog deploy (`aws s3 sync` / CloudFront invalidation) earlier in
+  the same pipeline run.
+- RHEL host IP is `192.168.0.200` on the home network (`RHEL_HOST_IP` env var
+  in the Jenkinsfile) — not secret, but only reachable from Jenkins' own
+  network, not the internet.
 
 ## Out of Scope
 

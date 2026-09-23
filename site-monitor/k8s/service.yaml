@@ -1,0 +1,14 @@
+# ClusterIP by default - reachable inside the cluster / via kubectl port-forward
+# only, same policy as comments-service (see lambda-comments/k8s/service.yaml).
+apiVersion: v1
+kind: Service
+metadata:
+  name: site-monitor
+  namespace: blog-staging
+spec:
+  selector:
+    app: site-monitor
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
