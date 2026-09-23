@@ -145,16 +145,32 @@ pipeline {
                 // above: cluster being unreachable, or this stage failing outright,
                 // never blocks the actual blog deploy above.
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    withCredentials([sshUserPrivateKey(credentialsId: 'rhel-host-ssh-key',
-                                                        keyFileVariable: 'SSH_KEY',
-                                                        usernameVariable: 'SSH_USER')]) {
-                        bat '''
-                            ssh -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes %SSH_USER%@%RHEL_HOST_IP% "rm -rf /opt/site-monitor-src"
-                            scp -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -r site-monitor %SSH_USER%@%RHEL_HOST_IP%:/opt/site-monitor-src
-                        '''
-                        bat '''
-                            ssh -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes %SSH_USER%@%RHEL_HOST_IP% "cd /opt/site-monitor-src && podman build -t site-monitor:local . && podman save site-monitor:local -o /tmp/site-monitor.tar && ctr -n k8s.io images import /tmp/site-monitor.tar && kubectl apply -f k8s/namespace.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml -f k8s/service.yaml && kubectl -n blog-staging rollout status deployment/site-monitor --timeout=60s"
-                        '''
+                    // Belt-and-suspenders alongside the icacls fix below: if ssh/scp
+                    // ever hang again for some other reason, fail this stage after 5
+                    // minutes instead of stalling the whole build (as happened once
+                    // in practice — see the icacls comment).
+                    timeout(time: 5, unit: 'MINUTES') {
+                        withCredentials([sshUserPrivateKey(credentialsId: 'rhel-host-ssh-key',
+                                                            keyFileVariable: 'SSH_KEY',
+                                                            usernameVariable: 'SSH_USER')]) {
+                            // Windows' OpenSSH client refuses a private key file that's
+                            // readable by more than its owner ("bad permissions") — the
+                            // temp file this credential binding writes isn't locked down
+                            // enough by default. In practice this made `ssh` fail fast
+                            // but `scp` hang indefinitely waiting on a fallback prompt
+                            // despite -o BatchMode=yes, stalling the build for 27+
+                            // minutes until the hung process was killed manually. Strip
+                            // inherited ACLs and grant read-only to the Jenkins service
+                            // account (LocalSystem, well-known SID S-1-5-18) only.
+                            bat 'icacls %SSH_KEY% /inheritance:r /grant:r *S-1-5-18:R'
+                            bat '''
+                                ssh -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes %SSH_USER%@%RHEL_HOST_IP% "rm -rf /opt/site-monitor-src"
+                                scp -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -r site-monitor %SSH_USER%@%RHEL_HOST_IP%:/opt/site-monitor-src
+                            '''
+                            bat '''
+                                ssh -i %SSH_KEY% -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes %SSH_USER%@%RHEL_HOST_IP% "cd /opt/site-monitor-src && podman build -t site-monitor:local . && podman save site-monitor:local -o /tmp/site-monitor.tar && ctr -n k8s.io images import /tmp/site-monitor.tar && kubectl apply -f k8s/namespace.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml -f k8s/service.yaml && kubectl -n blog-staging rollout status deployment/site-monitor --timeout=60s"
+                            '''
+                        }
                     }
                 }
             }

@@ -52,7 +52,13 @@ mkdir -p "$(dirname "$OUT_FILE")"
     if command -v trivy >/dev/null 2>&1; then
         echo "[INFO] Running: trivy rootfs / --scanners vuln --severity CRITICAL,HIGH,MEDIUM,LOW"
         echo "[INFO] Requires read access to the RPM database; run as root/sudo for a complete result."
-        trivy rootfs / --scanners vuln --severity CRITICAL,HIGH,MEDIUM,LOW --format table 2>&1
+        # This host also carries large, unrelated dev workspaces (e.g. Xilinx/Eclipse
+        # projects with hundreds of thousands of small files under /home and /work) that
+        # aren't OS packages and aren't what this section cares about — walking them blew
+        # past trivy's default 5m timeout in practice ("context deadline exceeded", no
+        # results at all). Skip them and raise the timeout as a second line of defense.
+        trivy rootfs / --scanners vuln --severity CRITICAL,HIGH,MEDIUM,LOW --format table \
+            --timeout 15m --skip-dirs /home,/work,/glide 2>&1
     else
         echo "[INFO] trivy not found on this host — skipping. Install: https://trivy.dev/latest/getting-started/installation/"
     fi
@@ -78,10 +84,29 @@ mkdir -p "$(dirname "$OUT_FILE")"
         if [ -n "$ds_file" ]; then
             profile="$(oscap info "$ds_file" 2>/dev/null | grep -i 'cis' | grep -oE 'xccdf_org\.ssgproject\.content_profile_[A-Za-z0-9_]*' | head -1)"
             if [ -n "$profile" ]; then
-                echo "[INFO] Evaluating CIS profile '$profile' from $ds_file (this can take a few minutes)..."
-                report_html="$(dirname "$OUT_FILE")/host-rhel-cis-report.html"
-                oscap xccdf eval --profile "$profile" --report "$report_html" "$ds_file" 2>&1 | tail -30
-                echo "[INFO] Full CIS report: $report_html"
+                echo "[INFO] Evaluating CIS profile '$profile' from $ds_file (this can take several minutes - it's a single-threaded pass over hundreds of rules)..."
+                out_dir="$(dirname "$OUT_FILE")"
+                report_html="$out_dir/host-rhel-cis-report.html"
+                results_xml="$out_dir/host-rhel-cis-results.xml"
+                full_log="$out_dir/host-rhel-cis-full.log"
+                # A full run prints one Title/Rule/Ident/Result block per rule (hundreds of
+                # lines) - capture all of it to full_log rather than truncating, and derive
+                # pass/fail counts from that instead of eyeballing a tail. --report's HTML
+                # render can itself fail on a result set this large (seen in practice: a
+                # libxml2 "growing nodeset hit limit" XSLT error) without that meaning the
+                # evaluation failed - --results keeps the raw XML as a fallback either way.
+                oscap xccdf eval --profile "$profile" --results "$results_xml" --report "$report_html" "$ds_file" \
+                    > "$full_log" 2>&1
+                oscap_exit=$?
+                pass_count="$(grep -cE '^Result[[:space:]]+pass' "$full_log" || true)"
+                fail_count="$(grep -cE '^Result[[:space:]]+fail' "$full_log" || true)"
+                echo "[INFO] CIS evaluation finished (oscap exit code $oscap_exit): $pass_count pass, $fail_count fail"
+                echo "[INFO] Full rule-by-rule output: $full_log"
+                if [ -s "$report_html" ]; then
+                    echo "[INFO] HTML report: $report_html"
+                else
+                    echo "[INFO] HTML report generation failed (see $full_log for the error) — raw XML results: $results_xml"
+                fi
             else
                 echo "[INFO] No CIS profile found in $ds_file — skipping."
             fi
