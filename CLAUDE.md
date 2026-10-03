@@ -322,6 +322,66 @@ dirs are skipped as build/vendor noise, not as a security exception.
   `PATH` (see Windows-specific notes above) — no Jenkins plugin, no Maven/npm
   plugin changes to any `pom.xml`/`package.json` needed.
 
+## Home Kubernetes Cluster (RHEL)
+
+A single-node kubeadm cluster on the home LAN, used only for learning/staging —
+**not** part of the production deploy path (production is S3 + CloudFront + Lambda).
+
+- **Host**: `redhat.kanjhome.local` / `192.168.0.200` (private LAN address)
+- **OS / runtime**: Red Hat Enterprise Linux 9.3, Kubernetes v1.31 (kubeadm,
+  single control-plane node that also runs workloads), containerd, Calico
+  (pod CIDR `10.244.0.0/16`). 20 cores / 93GB RAM. podman is also installed
+  (`podman0`, `10.88.0.0/16`).
+- **Access**: SSH as `root` (key auth), then run `kubectl` **on the host** with
+  `KUBECONFIG=/etc/kubernetes/admin.conf`. The `~/.kube/config` on the Windows
+  machine has stale certificates (x509 error) and does not work against the
+  current cluster. When scripting from Windows, pipe a script file over SSH
+  (`ssh root@192.168.0.200 'bash -s' < script.sh`) — inline PowerShell → ssh
+  quoting breaks.
+- **Storage**: no StorageClass / dynamic provisioning; workloads use
+  `emptyDir` (data is disposable) or hand-made static PVs (`s3-pv-lab/`)
+- **Images**: pulled from public registries (`docker.io`, `registry.k8s.io`), or
+  imported directly into containerd for local builds (`imagePullPolicy: Never`,
+  e.g. `localhost/comments-service:local`)
+- **Namespaces in use**:
+  - `blog-staging` — comments-service replica (`lambda-comments/k8s/`) and
+    site-monitor (`site-monitor/`, see Site Monitor below)
+  - `perf-lab` — PostgreSQL 17 performance-testing lab: CPU saturation, memory
+    exhaustion / OOM kill, and query verification with `EXPLAIN`. Manifests and
+    the walkthrough are in `db-perf-lab/` (`kubectl apply -k db-perf-lab`); a
+    copy is kept at `/root/db-perf-lab` on the host
+  - `s3-pv-lab` — S3-backed PersistentVolume lab (`s3-pv-lab/`)
+  - `security-lab` — DVWA + MariaDB security-testing lab (`security-lab/`)
+  - `mount-s3` — not managed from this repo
+- **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
+  2026-10-03 so metrics-server can verify the kubelet over TLS without
+  `--kubelet-insecure-tls`). The cert is signed by the cluster CA and expires
+  2027-10-02. On renewal the kubelet files a new `kubernetes.io/kubelet-serving`
+  CSR that **must be approved by hand** (`kubectl get csr` →
+  `kubectl certificate approve <name>`, after checking the requester is
+  `system:node:redhat.kanjhome.local`), or `kubectl top` stops working.
+- **metrics-server**: v0.8.0 official manifest (`kube-system`), patched to run
+  with `hostNetwork: true` (+ `dnsPolicy: ClusterFirstWithHostNet`) and
+  `--secure-port=4443` / `containerPort: 4443` instead of 10250 (10250 is taken
+  by the kubelet on the host network). Reason: firewalld rejects pod → host
+  traffic (see below), so a pod-network metrics-server cannot reach the kubelet;
+  on the host network it reaches it locally without any firewall change. Kubelet
+  TLS is still verified (no `--kubelet-insecure-tls`). `kubectl top` works.
+  Re-applying the official `components.yaml` reverts this patch — re-apply it:
+  `kubectl -n kube-system patch deploy metrics-server --type=json -p='[{"op":"replace","path":"/spec/template/spec/containers/0/args/1","value":"--secure-port=4443"},{"op":"replace","path":"/spec/template/spec/containers/0/ports/0/containerPort","value":4443},{"op":"add","path":"/spec/template/spec/hostNetwork","value":true},{"op":"add","path":"/spec/template/spec/dnsPolicy","value":"ClusterFirstWithHostNet"}]'`
+  (check that `args[1]` is still `--secure-port=...` first)
+- **firewalld**: the `lan` zone (source `192.168.0.0/24`) opens `6443/tcp` and
+  NodePorts `30000-32767/tcp`; `trusted` covers the podman range. Pod → host
+  traffic falls into the `public` zone (only `dhcpv6-client`) and is rejected
+  (`no route to host`) — expect this for any pod that needs to reach a host
+  port. Firewall changes are the user's call — do not change them yourself,
+  give the command instead. (The narrow alternative for metrics-server, if it is
+  ever moved back to the pod network:
+  `firewall-cmd --permanent --zone=public --add-rich-rule='rule family="ipv4" source address="10.244.0.0/16" port port="10250" protocol="tcp" accept' && firewall-cmd --reload`)
+- **Shared host**: the same machine also runs unrelated software (Oracle,
+  MuleSoft, MariaDB) and has run low on root disk before — see the RHEL disk
+  space note under Host-level Security Scanning below.
+
 ## Security Scanning (Host-level: Windows + RHEL)
 
 Complements the repo-level Trivy scan above, which only looks at
