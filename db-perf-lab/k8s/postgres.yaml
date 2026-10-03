@@ -1,0 +1,96 @@
+# 性能試験の学習用 PostgreSQL。本番用ではない:
+#  - 認証は trust(パスワード無し)。ClusterIP のみでクラスタ外には出していない前提。
+#  - データは emptyDir。Pod を消すと消え、次回起動時に init/01-schema.sql で作り直される
+#    (コンテナの再起動 = OOM kill 後の復帰 ではデータは残る)。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: perf-db
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: perf-db
+  template:
+    metadata:
+      labels:
+        app: perf-db
+    spec:
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:17
+          args:
+            - -c
+            - shared_preload_libraries=pg_stat_statements
+            - -c
+            - pg_stat_statements.track=all
+            - -c
+            - track_io_timing=on
+            - -c
+            - shared_buffers=256MB
+            - -c
+            - max_connections=200
+            - -c
+            - log_min_duration_statement=500
+            - -c
+            - log_temp_files=0
+          env:
+            - name: POSTGRES_USER
+              value: perf
+            - name: POSTGRES_DB
+              value: perf
+            - name: POSTGRES_HOST_AUTH_METHOD
+              value: trust
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          # わざと小さく絞る: 上限があるから「使い切る」状態を安全に再現できる。
+          # ノードは 20 コア / 93GB あるので、ここを超えた分だけがスロットリング / OOM kill になる。
+          resources:
+            requests:
+              cpu: "2"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "1Gi"
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "perf", "-d", "perf"]
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: shm
+              mountPath: /dev/shm
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+            - name: scenarios
+              mountPath: /scenarios
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: shm               # parallel query 用の共有メモリ。memory limit に算入される
+          emptyDir:
+            medium: Memory
+            sizeLimit: 256Mi
+        - name: init
+          configMap:
+            name: perf-init
+        - name: scenarios
+          configMap:
+            name: perf-scenarios
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: perf-db
+spec:
+  selector:
+    app: perf-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP

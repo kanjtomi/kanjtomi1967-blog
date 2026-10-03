@@ -1,0 +1,35 @@
+# 負荷をかける側(pgbench / psql)。DB と別 Pod にして、負荷ツール自身が DB の CPU 上限を
+# 食わないようにする。resources.limits は付けない = 負荷側がボトルネックにならない。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: perf-bench
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: perf-bench
+  template:
+    metadata:
+      labels:
+        app: perf-bench
+    spec:
+      containers:
+        - name: bench
+          image: docker.io/library/postgres:17
+          command: ["sleep", "infinity"]
+          workingDir: /scenarios
+          env:
+            - name: PGHOST
+              value: perf-db
+            - name: PGUSER
+              value: perf
+            - name: PGDATABASE
+              value: perf
+          volumeMounts:
+            - name: scenarios
+              mountPath: /scenarios
+      volumes:
+        - name: scenarios
+          configMap:
+            name: perf-scenarios

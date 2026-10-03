@@ -1,0 +1,24 @@
+# 性能試験の学習用 PostgreSQL 一式。 kubectl apply -k . で perf-lab namespace に入る。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: perf-lab
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/postgres.yaml
+  - k8s/bench.yaml
+
+configMapGenerator:
+  - name: perf-init
+    files:
+      - init/01-schema.sql
+  - name: perf-scenarios
+    files:
+      - scenarios/cpu-burn.sql
+      - scenarios/mem-sort.sql
+      - scenarios/slow-queries.sql
+      - scenarios/observe.sql
+      - scenarios/cgroup-watch.sh
+
+generatorOptions:
+  disableNameSuffixHash: true
