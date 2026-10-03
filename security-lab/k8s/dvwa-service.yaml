@@ -1,0 +1,15 @@
+# ClusterIP only — NEVER change this to NodePort/LoadBalancer. DVWA is
+# intentionally riddled with vulnerabilities; it must only ever be reached
+# via `kubectl port-forward` from a trusted operator's machine.
+apiVersion: v1
+kind: Service
+metadata:
+  name: dvwa
+  namespace: security-lab
+spec:
+  selector:
+    app: dvwa
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP

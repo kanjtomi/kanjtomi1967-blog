@@ -1,0 +1,37 @@
+# Static provisioning (the Mountpoint S3 CSI driver doesn't support dynamic
+# provisioning) of the kanjtomi1967-k8s-s3-pv-lab S3 bucket as a
+# PersistentVolume. `storage` capacity is required by the PV/PVC API but is
+# meaningless here - S3 has no fixed size - so any value works as long as
+# the PV and PVC request the same amount.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: s3-pv-lab-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  mountOptions:
+    - allow-delete
+    - region ap-northeast-1
+  persistentVolumeReclaimPolicy: Retain   # never let k8s delete bucket contents on PVC teardown
+  csi:
+    driver: s3.csi.aws.com
+    volumeHandle: s3-pv-lab-volume
+    volumeAttributes:
+      bucketName: kanjtomi1967-k8s-s3-pv-lab
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: s3-pv-lab-pvc
+  namespace: s3-pv-lab
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""   # required for static provisioning (no StorageClass/provisioner)
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: s3-pv-lab-pv

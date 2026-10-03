@@ -295,6 +295,18 @@ and `Deploy`. A single `trivy fs --scanners vuln,misconfig,secret .` pass covers
 `public/`, `themes/`, `hugo-PaperMod/`, and any `target`/`node_modules`/`dist`
 dirs are skipped as build/vendor noise, not as a security exception.
 
+- **`--offline-scan` + Maven cache warm-up**: Trivy's Java analyzer resolves
+  transitive dependency versions from `pom.xml` by querying remote Maven repos
+  for anything missing from the local `~/.m2` cache. From a cold cache this
+  fires enough rapid requests at Maven Central to get the Jenkins host
+  429-blocked (seen in practice: `FATAL Error ... 429 Too Many Requests`, no
+  report written, `archiveArtifacts` then finds nothing to archive). The stage
+  runs `mvn dependency:resolve` for `lambda-comments/`, `lambda-rag/`, and
+  `lambda-photo-upload/` first (`rag-index/` is already resolved by the
+  `Rebuild RAG Index` stage's `mvn package`) to warm the cache, then passes
+  `--offline-scan` to both `trivy fs` calls so they read only from that cache
+  instead of hitting the network.
+
 - **Report-only for now**: the stage has no `--exit-code`/`--severity` gate, so
   findings never fail the build — each `catchError` wrapper in the Jenkinsfile
   also marks the stage `UNSTABLE` rather than letting a Trivy crash fail the
@@ -326,19 +338,21 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   current cluster. When scripting from Windows, pipe a script file over SSH
   (`ssh root@192.168.0.200 'bash -s' < script.sh`) — inline PowerShell → ssh
   quoting breaks.
-- **Storage**: no StorageClass / dynamic provisioning; workloads here use
-  `emptyDir` (data is disposable)
+- **Storage**: no StorageClass / dynamic provisioning; workloads use
+  `emptyDir` (data is disposable) or hand-made static PVs (`s3-pv-lab/`)
 - **Images**: pulled from public registries (`docker.io`, `registry.k8s.io`), or
   imported directly into containerd for local builds (`imagePullPolicy: Never`,
   e.g. `localhost/comments-service:local`)
 - **Namespaces in use**:
-  - `blog-staging` — comments-service replica (`lambda-comments/k8s/`)
+  - `blog-staging` — comments-service replica (`lambda-comments/k8s/`) and
+    site-monitor (`site-monitor/`, see Site Monitor below)
   - `perf-lab` — PostgreSQL 17 performance-testing lab: CPU saturation, memory
     exhaustion / OOM kill, and query verification with `EXPLAIN`. Manifests and
     the walkthrough are in `db-perf-lab/` (`kubectl apply -k db-perf-lab`); a
     copy is kept at `/root/db-perf-lab` on the host
-  - `mount-s3`, `s3-pv-lab`, `security-lab` — other learning experiments, not
-    managed from this repo
+  - `s3-pv-lab` — S3-backed PersistentVolume lab (`s3-pv-lab/`)
+  - `security-lab` — DVWA + MariaDB security-testing lab (`security-lab/`)
+  - `mount-s3` — not managed from this repo
 - **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
   2026-10-03 so metrics-server can verify the kubelet over TLS without
   `--kubelet-insecure-tls`). The cert is signed by the cluster CA and expires
@@ -364,6 +378,93 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   give the command instead. (The narrow alternative for metrics-server, if it is
   ever moved back to the pod network:
   `firewall-cmd --permanent --zone=public --add-rich-rule='rule family="ipv4" source address="10.244.0.0/16" port port="10250" protocol="tcp" accept' && firewall-cmd --reload`)
+- **Shared host**: the same machine also runs unrelated software (Oracle,
+  MuleSoft, MariaDB) and has run low on root disk before — see the RHEL disk
+  space note under Host-level Security Scanning below.
+
+## Security Scanning (Host-level: Windows + RHEL)
+
+Complements the repo-level Trivy scan above, which only looks at
+source/dependencies/IaC checked into this repo, not the machines the
+pipeline and the k8s learning/staging replica actually run on.
+
+- **Windows** (`scripts/security-check-windows.ps1`): checks the Jenkins
+  agent's own host — pending Windows Updates (via the Windows Update Agent
+  COM API), recent hotfix history, Windows Defender status, and a handful of
+  CIS-inspired baseline spot checks (firewall profiles, SMBv1, UAC, RDP
+  NLA, the Windows Update service's startup type). **Wired into Jenkins**:
+  runs as the `Host Security Scan (Windows)` stage, right after `Security
+  Scan` and before `Deploy`. Report-only (always exits 0, plus a
+  `catchError` wrapper same as the other scan stage) — findings never block
+  deploy. Report: `security-reports\host-windows-report.txt`, archived as a
+  build artifact.
+- **RHEL** (`scripts/security-check-rhel.sh`): checks the RHEL host running
+  the k8s learning/staging comments-service replica (see
+  `lambda-comments/k8s/`) — pending `dnf` security updates, OS package CVEs
+  via `trivy rootfs /`, a `trivy image` scan of the two images the replica's
+  `Dockerfile` builds from, and an optional CIS baseline pass via OpenSCAP
+  if `openscap-scanner`/`scap-security-guide` are installed (skipped with a
+  note if not — this project doesn't install them by default, matching the
+  "minimal cost / minimal footprint" ethos elsewhere in this doc). **Not
+  wired into Jenkins**: Jenkins runs on the Windows machine above and has no
+  configured access (SSH credential, or a Jenkins agent installed on the
+  RHEL box) to this host. Run it manually there for now — Claude Code is
+  also installed on that machine, so asking that session to run
+  `bash scripts/security-check-rhel.sh` after pulling the repo works too.
+  Report: `security-reports/host-rhel-report.txt` (plus
+  `security-reports/host-rhel-cis-report.html` if the OpenSCAP pass ran).
+  - **SSH access from Jenkins to the RHEL host now exists** (see the
+    `rhel-host-ssh-key` credential under Site Monitor below, added for the
+    `Deploy Site Monitor (RHEL k8s)` stage) — this script isn't wired into
+    Jenkins yet, but doing so is now just a matter of adding a stage that
+    reuses that same credential to SSH in and run it, rather than a
+    prerequisite-blocked "later."
+  - **RHEL disk space note**: this host also runs other, unrelated software
+    (Oracle, MuleSoft Anypoint, an active MariaDB instance, etc.) sharing the
+    same root filesystem. It has run critically low on space before (97%
+    full), which silently breaks `trivy rootfs`/`trivy image`/OpenSCAP mid-scan
+    with "No space left on device" rather than a clear error — check `df -h /`
+    first if this script's trivy/OpenSCAP sections come back empty. MariaDB's
+    datadir was relocated to `/glide` (a larger, separate disk also shared
+    with this host's k8s kubelet volumes) to free root space; its socket path
+    was moved to match (`/glide/mysql-data/mysql.sock`, set in both the
+    `[mysqld]` and a new `[client]` section of `/etc/my.cnf` — a bare `mysql`
+    CLI call needs the `[client]` socket override or it looks for the old
+    `/var/lib/mysql/mysql.sock`).
+
+## Site Monitor (RHEL k8s)
+
+Uptime/response-time monitoring for the blog's public URLs (`www.kanjtomi1967.net/`
+and `/search/` by default) — `site-monitor/`, a stdlib-only Python app (no
+pip dependencies, keeps the image small) that periodically HTTP-GETs each
+configured URL and serves a dashboard, JSON status, and Prometheus metrics.
+Full details in `site-monitor/README.md`.
+
+- Deploys as a k8s learning/staging replica on the same home RHEL cluster as
+  `comments-service` (shares the `blog-staging` namespace, otherwise
+  independent) — registry-free `podman build` → `ctr -n k8s.io images import`
+  → `kubectl apply`, same pattern as `lambda-comments/k8s/`.
+- **Unlike `comments-service`, this one is built and deployed automatically**
+  by the `Deploy Site Monitor (RHEL k8s)` Jenkins stage (runs after `Deploy`)
+  — it carries no secrets (only outbound HTTPS to the blog's own public
+  URLs), so there was no reason to keep it manual-only like the comments
+  replica.
+- **Jenkins credential required**: `rhel-host-ssh-key` (kind: "SSH Username
+  with private key", username `root`) — not created automatically, add it
+  manually via Manage Jenkins → Credentials, same as `voyage-api-key`. The
+  private key must be one already present in the RHEL host's
+  `root/.ssh/authorized_keys`.
+- **Windows-side requirement**: `ssh`/`scp` on the Jenkins agent's `PATH` —
+  the Windows 10/11 built-in OpenSSH Client feature
+  (`C:\Windows\System32\OpenSSH\`) covers this; no separate install needed
+  if that optional Windows feature is enabled.
+- Report-only in spirit like `Security Scan`/`Host Security Scan (Windows)`:
+  wrapped in `catchError`, so the RHEL cluster being unreachable never blocks
+  the actual blog deploy (`aws s3 sync` / CloudFront invalidation) earlier in
+  the same pipeline run.
+- RHEL host IP is `192.168.0.200` on the home network (`RHEL_HOST_IP` env var
+  in the Jenkinsfile) — not secret, but only reachable from Jenkins' own
+  network, not the internet.
 
 ## Out of Scope
 

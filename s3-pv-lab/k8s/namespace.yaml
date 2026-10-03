@@ -1,0 +1,7 @@
+# Isolated namespace for the S3-backed PersistentVolume learning exercise.
+# Unrelated to the blog (blog-staging) or the DVWA lab (security-lab) —
+# kept separate so it can be torn down independently.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: s3-pv-lab

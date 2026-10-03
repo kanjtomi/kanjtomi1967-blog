@@ -1,0 +1,10 @@
+# Dedicated namespace for DVWA (Damn Vulnerable Web Application) and any
+# other deliberately-vulnerable security training/practice tools — kept
+# separate from blog-staging (comments-service, site-monitor) since this
+# has nothing to do with the blog itself; it's a standalone security lab
+# on the same home RHEL k8s cluster. Deleting this namespace tears down
+# everything in it in one shot.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security-lab

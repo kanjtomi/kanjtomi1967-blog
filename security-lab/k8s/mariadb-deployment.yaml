@@ -1,0 +1,69 @@
+# Official upstream MariaDB image (docker.io/library/mariadb) — deliberately
+# NOT one of the old bundled all-in-one DVWA images. Those (vulnerables/
+# web-dvwa, citizenstig/dvwa) both OOMKilled within seconds on this cluster
+# regardless of memory limit (tried up to 20Gi) — root-caused to their
+# ~2016-2018-era bundled MariaDB builds being incompatible with this host's
+# modern kernel (confirmed by running this exact official image standalone
+# under the same k8s/containerd setup: 100MB, completely stable). See
+# README.md for the full investigation. Splitting DB and app into separate
+# pods, using this trusted upstream image for the DB, sidesteps the whole
+# problem.
+#
+# Secret dvwa-db-secret is NOT defined here — create it yourself:
+#
+#   kubectl create secret generic dvwa-db-secret -n security-lab \
+#     --from-literal=MARIADB_ROOT_PASSWORD=<pick something> \
+#     --from-literal=MARIADB_PASSWORD=<pick something>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+  namespace: security-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dvwa-mariadb
+  template:
+    metadata:
+      labels:
+        app: dvwa-mariadb
+    spec:
+      containers:
+        - name: mariadb
+          image: localhost/mariadb-dvwa:local
+          imagePullPolicy: Never   # image is loaded directly into containerd, no registry
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MARIADB_DATABASE
+              value: "dvwa"
+            - name: MARIADB_USER
+              value: "dvwa"
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dvwa-db-secret
+                  key: MARIADB_ROOT_PASSWORD
+            - name: MARIADB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dvwa-db-secret
+                  key: MARIADB_PASSWORD
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 3306
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 3306
+            initialDelaySeconds: 15
+            periodSeconds: 15

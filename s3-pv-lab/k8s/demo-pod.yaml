@@ -1,0 +1,44 @@
+# Minimal demo proving the S3-backed PV actually works: every 30s, writes a
+# NEW timestamped file to /data/ (on the S3-mounted volume) and lists
+# everything present. Writes one file per iteration rather than appending to
+# a single file - confirmed in practice that the Mountpoint S3 CSI driver
+# does not support opening an existing object for append/random-write
+# ("Operation not permitted" reopening a file across a pod restart); S3
+# objects are fundamentally write-once, so a new object per write is the
+# pattern that actually matches how this volume behaves. Seeing files from
+# a PRIOR pod's run still listed after `kubectl delete pod` + recreate is
+# the proof that data landed in S3, not container-local storage.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: s3-pv-lab-demo
+  namespace: s3-pv-lab
+spec:
+  containers:
+    - name: demo
+      image: localhost/busybox:local
+      imagePullPolicy: Never   # image is loaded directly into containerd, no registry
+      command:
+        - sh
+        - -c
+        - |
+          while true; do
+            echo "written by $(hostname) at $(date -Iseconds)" > "/data/$(date +%s).txt"
+            echo "--- /data contents ---"
+            ls -la /data
+            sleep 30
+          done
+      volumeMounts:
+        - name: s3-data
+          mountPath: /data
+      resources:
+        requests:
+          cpu: "50m"
+          memory: "32Mi"
+        limits:
+          cpu: "100m"
+          memory: "64Mi"
+  volumes:
+    - name: s3-data
+      persistentVolumeClaim:
+        claimName: s3-pv-lab-pvc

@@ -1,0 +1,7 @@
+# Shared with the comments-service k8s learning/staging replica
+# (see lambda-comments/k8s/namespace.yaml) - applying this again is a no-op
+# if that namespace already exists.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: blog-staging
