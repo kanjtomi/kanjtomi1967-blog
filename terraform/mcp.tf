@@ -2,10 +2,6 @@
 # Add this file to terraform/ alongside the existing lambda-rag / lambda-comments resources.
 # It reuses the existing RAG index bucket (read-only) and its own API Gateway HTTP API.
 
-variable "voyage_api_key" {
-  type      = string
-  sensitive = true
-}
 
 variable "mcp_bearer_token" {
   description = "Shared secret Claude Desktop/Code sends as 'Authorization: Bearer <token>'."
