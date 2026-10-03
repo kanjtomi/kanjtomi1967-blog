@@ -1,0 +1,65 @@
+# kube-prometheus-stack values for the home RHEL single-node cluster.
+#   helm upgrade --install kps prometheus-community/kube-prometheus-stack \
+#     -n monitoring -f monitoring/values.yaml
+#
+# Network constraint that shapes this file: firewalld rejects pod -> host traffic
+# addressed directly to the node IP (192.168.0.200), but pod -> ClusterIP works
+# even when the Service's endpoint is a hostNetwork pod. Prometheus scrapes
+# targets by their endpoint IP (not via ClusterIP), so it runs on hostNetwork to
+# reach the kubelet/cAdvisor (10250) and node-exporter (9100) locally. Grafana
+# stays on the pod network and reaches Prometheus through its ClusterIP Service.
+
+# Not needed for this lab.
+alertmanager:
+  enabled: false
+
+# kubeadm binds these to 127.0.0.1, so they cannot be scraped via the node IP;
+# disabling them avoids permanently-down targets.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    hostNetwork: true          # listens on host :9090 (not opened in firewalld, so LAN cannot reach it)
+    retention: 7d
+    retentionSize: 15GB
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        memory: 4Gi
+    # Pick up ServiceMonitors/PodMonitors from any namespace, not only ones labelled for this release.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: prometheus-local   # binds to the hostPath PV in monitoring/pv.yaml
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+grafana:
+  admin:
+    existingSecret: grafana-admin   # created by hand, keys admin-user / admin-password
+    userKey: admin-user
+    passwordKey: admin-password
+  service:
+    type: NodePort
+    nodePort: 30300                 # inside the NodePort range firewalld opens to 192.168.0.0/24
+  persistence:
+    enabled: false                  # dashboards come from the chart; nothing to keep
+  deploymentStrategy:
+    type: Recreate
+  sidecar:
+    datasources:
+      alertmanager:
+        enabled: false              # Alertmanager is disabled above; avoid a dead datasource

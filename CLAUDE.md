@@ -352,6 +352,7 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
     copy is kept at `/root/db-perf-lab` on the host
   - `s3-pv-lab` — S3-backed PersistentVolume lab (`s3-pv-lab/`)
   - `security-lab` — DVWA + MariaDB security-testing lab (`security-lab/`)
+  - `monitoring` — Prometheus + Grafana (`monitoring/`), see below
   - `mount-s3` — not managed from this repo
 - **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
   2026-10-03 so metrics-server can verify the kubelet over TLS without
@@ -378,6 +379,23 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   give the command instead. (The narrow alternative for metrics-server, if it is
   ever moved back to the pod network:
   `firewall-cmd --permanent --zone=public --add-rich-rule='rule family="ipv4" source address="10.244.0.0/16" port port="10250" protocol="tcp" accept' && firewall-cmd --reload`)
+- **Pod → host networking (measured)**: a pod connecting to the node IP
+  directly (`192.168.0.200:<any port>`) gets `No route to host`, but a pod
+  connecting to a **ClusterIP** whose endpoint is a hostNetwork pod works on
+  any port. So: anything that must scrape/reach host ports by IP goes on
+  `hostNetwork`; pod-network clients reach host-network services via a Service.
+- **Monitoring (`monitoring/`, namespace `monitoring`)**: kube-prometheus-stack
+  via Helm (release `kps`, values in `monitoring/values.yaml`, copy at
+  `/root/monitoring` on the host). Grafana at `http://192.168.0.200:30300`
+  (NodePort, reachable from the LAN without firewall changes), user `admin`,
+  password in `/root/grafana-admin-password.txt` on the host (Secret
+  `grafana-admin`; never commit it). Prometheus runs on `hostNetwork` (:9090,
+  not exposed to the LAN) to reach the kubelet and node-exporter; data on a
+  static hostPath PV at `/glide/prometheus` (StorageClass `prometheus-local`,
+  no provisioner), 7d / 15GB retention. Alertmanager and the
+  controller-manager/scheduler/etcd/kube-proxy monitors are disabled (kubeadm
+  binds those to 127.0.0.1). Grafana keeps no state — hand-made dashboards are
+  lost when its pod is recreated. Details in `monitoring/README.md`.
 - **Shared host**: the same machine also runs unrelated software (Oracle,
   MuleSoft, MariaDB) and has run low on root disk before — see the RHEL disk
   space note under Host-level Security Scanning below.
