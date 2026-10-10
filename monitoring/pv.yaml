@@ -1,0 +1,31 @@
+# Prometheus TSDB storage on the large /glide disk (the root filesystem has run
+# full before). No StorageClass/provisioner exists on this cluster, so this is a
+# static hostPath PV that the Prometheus PVC binds to via storageClassName.
+# Create the directory first on the host:
+#   mkdir -p /glide/prometheus/prometheus-db && chown -R 1000:2000 /glide/prometheus
+# (pre-create prometheus-db: otherwise the kubelet creates that subPath as
+# root and Prometheus, running as uid 1000, crashes with "permission denied")
+#
+# The StorageClass only exists because Prometheus Operator refuses a
+# storageClassName that does not exist; it provisions nothing.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: prometheus-local
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: prometheus-local
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes: ["ReadWriteOnce"]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: prometheus-local
+  hostPath:
+    path: /glide/prometheus
+    type: Directory

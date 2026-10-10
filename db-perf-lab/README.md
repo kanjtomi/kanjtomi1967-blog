@@ -38,6 +38,10 @@ anon / file の内訳は出ない。比べてみると「top では CPU 2000m �
 watch -n 5 kubectl top pods -n perf-lab
 ```
 
+ブラウザでグラフとして見るなら Grafana(http://192.168.0.200:30300)の
+**Kubernetes / Compute Resources / Pod** で `perf-lab` / `perf-db-...` を選ぶ。CPU・スロットリング・
+メモリの推移が残るので、試験後に振り返れる。詳細は [monitoring/README.md](../monitoring/README.md)。
+
 ## 1. CPU を使い切る
 
 接続数を 1 → 2 → 4 → 8 と増やして、TPS とレイテンシがどうなるかを見る。
