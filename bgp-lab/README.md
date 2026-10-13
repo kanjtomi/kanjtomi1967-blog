@@ -25,7 +25,7 @@ podman exec -it frr-bgp vtysh            # FRR の CLI
 FRR の設定は `frr/frr.conf`。vtysh で変えた設定を残すなら vtysh で `write memory`
 (コンテナに `frr/` をマウントしているのでホスト側のファイルが更新される)。
 
-Cisco 側の設定は startup-config に保存していない。ルーターを再起動すると消える。残すなら `write memory`。
+Cisco 側の設定 (Loopback1 と `router bgp 65001`) は startup-config に保存済み (2026-10-13)。ルーターを再起動しても残る。レッスンで変えた設定を残すときは `write memory`。
 
 ## 1. セッションを確認する
 
@@ -150,9 +150,11 @@ podman rm -f frr-bgp
 podman network rm bgp-lan
 ```
 
-Cisco 側 (startup-config には保存していないので、再起動でも消える):
+Cisco 側 (startup-config に保存済みなので、消したあと `write memory` まで行う):
 
 ```
 Kobe(config)# no router bgp 65001
 Kobe(config)# no interface Loopback1
+Kobe(config)# end
+Kobe# write memory
 ```

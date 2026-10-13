@@ -406,7 +406,7 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging â€
   console on the Windows PC's COM3 (9600 8N1, usually held by Tera Term).
   SSH/Telnet to the router are refused (RST) from the LAN for a reason not yet
   identified. Config changes need `enable`, which the user does. Cisco-side BGP
-  config is **not** saved to startup-config. Lessons in `bgp-lab/README.md`.
+  config is saved to startup-config (2026-10-13). Lessons in `bgp-lab/README.md`.
 - **Sleep disabled (2026-10-11)**: the host used to auto-suspend through the
   GNOME/GDM idle policy, which took the whole cluster offline. `sleep`,
   `suspend`, `hibernate` and `hybrid-sleep` targets are now masked. While the
