@@ -332,12 +332,14 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   single control-plane node that also runs workloads), containerd, Calico
   (pod CIDR `10.244.0.0/16`). 20 cores / 93GB RAM. podman is also installed
   (`podman0`, `10.88.0.0/16`).
-- **Access**: SSH as `root` (key auth), then run `kubectl` **on the host** with
-  `KUBECONFIG=/etc/kubernetes/admin.conf`. The `~/.kube/config` on the Windows
-  machine has stale certificates (x509 error) and does not work against the
-  current cluster. When scripting from Windows, pipe a script file over SSH
-  (`ssh root@192.168.0.200 'bash -s' < script.sh`) — inline PowerShell → ssh
-  quoting breaks.
+- **Access**: `kubectl` works directly from the Windows PC — `~/.kube/config`
+  there was refreshed from the host's `/etc/kubernetes/admin.conf` on
+  2026-10-13 (cluster-admin credentials; the stale copy is kept as
+  `~/.kube/config.bak-20261013-212105`). If the cluster is ever re-initialised,
+  copy `admin.conf` again. For host-level work (podman, files under `/root`,
+  journalctl), SSH as `root` (key auth). When scripting from Windows, pipe a
+  script file over SSH (`ssh root@192.168.0.200 'bash -s' < script.sh`) —
+  inline PowerShell → ssh quoting breaks.
 - **Storage**: no StorageClass / dynamic provisioning; workloads use
   `emptyDir` (data is disposable) or hand-made static PVs (`s3-pv-lab/`)
 - **Images**: pulled from public registries (`docker.io`, `registry.k8s.io`), or
@@ -353,6 +355,7 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   - `s3-pv-lab` — S3-backed PersistentVolume lab (`s3-pv-lab/`)
   - `security-lab` — DVWA + MariaDB security-testing lab (`security-lab/`)
   - `monitoring` — Prometheus + Grafana (`monitoring/`), see below
+  - `bgp-lab` — FRR for the BGP lab (`bgp-lab/`), see below
   - `mount-s3` — not managed from this repo
 - **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
   2026-10-03 so metrics-server can verify the kubelet over TLS without
@@ -397,12 +400,21 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   binds those to 127.0.0.1). Grafana keeps no state — hand-made dashboards are
   lost when its pod is recreated. Details in `monitoring/README.md`.
 - **BGP lab (`bgp-lab/`)**: eBGP between the home Cisco C841M "Kobe"
-  (192.168.0.100 on Gi0/4, AS 65001) and an FRR 10.4.1 podman container on
-  this host (`frr-bgp`, AS 65002). The container has its own LAN address,
-  192.168.0.210, via the `bgp-lan` macvlan network on `enp3s0`: no NAT, no
-  firewalld change, and learned routes stay inside the container netns. Start
-  it with `bash /root/bgp-lab/run-frr.sh`; open the CLI with
-  `podman exec -it frr-bgp vtysh`. The Cisco is reached only through its
+  (192.168.0.100 on Gi0/4, AS 65001) and FRR 10.4.1 running as a k8s pod
+  (namespace `bgp-lab`, Deployment `frr`, AS 65002) — the user asked for no
+  podman. The pod keeps its normal Calico `eth0` and gets a second interface
+  `net1` with the fixed LAN address 192.168.0.210 via **Multus** (v4.3.1 thick,
+  `bgp-lab/k8s/multus`, DaemonSet `kube-multus-ds` in `kube-system`) and the
+  `bgp-lan` macvlan NetworkAttachmentDefinition on `enp3s0`: no NAT, no
+  firewalld change, and learned routes stay inside the pod netns. Deploy with
+  `kubectl apply -k bgp-lab`; open the CLI with
+  `kubectl -n bgp-lab exec -it deploy/frr -- vtysh`. vtysh changes are lost
+  when the pod is recreated; persistent config lives in `bgp-lab/frr/`.
+  Multus writes `/etc/cni/net.d/00-multus.conf` on the host (delegating to
+  Calico); if Multus is ever removed, delete that file too or new pods fail
+  to start. Multus first crash-looped with "too many open files": root had
+  127 of 128 `fs.inotify.max_user_instances` in use. The user raised it to 512
+  in `/etc/sysctl.d/90-inotify-instances.conf` (2026-10-13). The Cisco is reached only through its
   console on the Windows PC's COM3 (9600 8N1, usually held by Tera Term).
   SSH/Telnet to the router are refused (RST) from the LAN for a reason not yet
   identified. Config changes need `enable`, which the user does. Cisco-side BGP
