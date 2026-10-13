@@ -1,29 +1,43 @@
 # BGP ラボ (Cisco C841M ⇔ FRR)
 
-自宅の Cisco ルーターと、RHEL サーバー上の FRR コンテナで eBGP を張って練習する。
+自宅の Cisco ルーターと、RHEL の k8s クラスタ上の FRR (Pod) で eBGP を張って練習する。
 
 | | Cisco "Kobe" | FRR "frr-bgp" |
 |---|---|---|
-| 機器 | C841M (IOS 15.9) | RHEL 上の podman コンテナ (FRR 10.4.1) |
-| LAN アドレス | 192.168.0.100 (Gi0/4) | 192.168.0.210 (macvlan) |
+| 機器 | C841M (IOS 15.9) | k8s の Pod (namespace `bgp-lab`, FRR 10.4.1) |
+| LAN アドレス | 192.168.0.100 (Gi0/4) | 192.168.0.210 (Pod の `net1`, Multus + macvlan) |
 | AS | 65001 | 65002 |
 | 広告するネットワーク | 10.10.10.0/24 (Vlan1), 172.16.1.0/24 (Loopback1) | 172.16.2.0/24 (lo) |
-| 操作方法 | COM3 のコンソール (Tera Term) | `podman exec -it frr-bgp vtysh` |
+| 操作方法 | COM3 のコンソール (Tera Term) | `kubectl -n bgp-lab exec -it deploy/frr -- vtysh` |
 
-FRR は macvlan で LAN 上に独立した IP を持つ。NAT を挟まないので eBGP の TTL や next-hop で
-つまずかず、RHEL の firewalld も変更しない。FRR が覚えた経路はコンテナ内だけに入り、RHEL 本体や
-Kubernetes には影響しない。macvlan の仕様で、RHEL 本体から 192.168.0.210 へは直接届かない。
+FRR の Pod は、通常の Calico の `eth0` に加えて、Multus で LAN 直結の `net1` (macvlan, 固定 IP
+192.168.0.210) を持つ。NAT を挟まないので eBGP の TTL や next-hop でつまずかず、RHEL の firewalld も
+変更しない。FRR が覚えた経路は Pod の中だけに入り、RHEL 本体や他の Pod には影響しない。macvlan の
+仕様で、RHEL 本体から 192.168.0.210 へは直接届かない。
 
-## 起動 / 停止
+## 構成ファイル
+
+| ファイル | 内容 |
+|---|---|
+| `k8s/multus/` | Multus CNI (v4.3.1, thick)。Pod に 2 つ目のインターフェースを付けるため。クラスタに 1 回だけ入れる |
+| `k8s/network.yaml` | `net1` の定義 (macvlan on `enp3s0`, 192.168.0.210/24) |
+| `k8s/frr.yaml` | FRR の Deployment |
+| `frr/frr.conf`, `frr/daemons` | FRR の設定。ConfigMap になって Pod に入る |
+
+## 起動 / 停止 / CLI
+
+この PC (Windows) の `kubectl` からそのまま操作できる。
 
 ```bash
-bash /root/bgp-lab/run-frr.sh          # 起動 (作り直し)
-podman stop frr-bgp                      # 停止
-podman exec -it frr-bgp vtysh            # FRR の CLI
+kubectl apply -k bgp-lab/k8s/multus                  # 初回のみ: Multus
+kubectl apply -k bgp-lab                             # FRR を起動 (frr/ を変えたらこれで反映)
+kubectl -n bgp-lab exec -it deploy/frr -- vtysh      # FRR の CLI
+kubectl -n bgp-lab rollout restart deploy/frr        # FRR を再起動 (設定は frr/frr.conf の状態に戻る)
+kubectl -n bgp-lab scale deploy/frr --replicas=0     # 停止 (1 で再開)
 ```
 
-FRR の設定は `frr/frr.conf`。vtysh で変えた設定を残すなら vtysh で `write memory`
-(コンテナに `frr/` をマウントしているのでホスト側のファイルが更新される)。
+vtysh で変えた設定は Pod の中だけにあり、Pod を作り直すと消える (練習中はこの方が便利)。
+恒久的に変えるときは `frr/frr.conf` を編集して `kubectl apply -k bgp-lab`。
 
 Cisco 側の設定 (Loopback1 と `router bgp 65001`) は startup-config に保存済み (2026-10-13)。ルーターを再起動しても残る。レッスンで変えた設定を残すときは `write memory`。
 
@@ -38,8 +52,9 @@ Cisco 側の設定 (Loopback1 と `router bgp 65001`) は startup-config に保�
 
 `State/PfxRcd` に数字が出ていれば Established (数字は受け取った経路数)。`Idle` / `Active` は未確立。
 
-初回の結果: セッション確立後、IOS は最大 120 秒ほど最適経路の計算を待つ (update-delay)。その間
-`show ip bgp` の経路に `>` が付かず、Cisco からの広告も出ない。待てば両側に経路が入る。
+初回の結果: BGP プロセスを起動した直後、IOS は最適経路の計算と広告をしばらく待つ (update-delay)。
+実測では、セッション確立から 61 秒後に Cisco の End-of-RIB が届いた。その間 `show ip bgp` の経路に
+`>` が付かず、Cisco からの広告も出ない。セッションを張り直しただけのときは待ちは無い。
 
 疎通確認 (BGP で覚えた経路で通信できるか):
 
@@ -115,15 +130,22 @@ Kobe# clear ip bgp 192.168.0.210 soft in
 
 ## 5. 障害試験
 
-FRR を止めて、Cisco が経路を消すまでの時間を見る:
+止め方によって、Cisco が経路を消すまでの時間が変わる。
+
+**正常に止める** (FRR が NOTIFICATION を送るか、TCP が閉じられる → Cisco はすぐ気づく):
 
 ```bash
-podman stop frr-bgp
+kubectl -n bgp-lab scale deploy/frr --replicas=0
 ```
 
-Cisco のコンソールに `%BGP-5-ADJCHANGE: neighbor 192.168.0.210 Down` が出るまで、既定では最大
-180 秒 (hold time)。プロセスが正常終了すると NOTIFICATION が送られて即座に落ちることもある。
-違いを見るには `podman kill frr-bgp` (強制停止) と比べる。
+**線が切れたように止める** (何も送らずに `net1` を落とす → Cisco は hold time まで待つ):
+
+```bash
+kubectl -n bgp-lab exec deploy/frr -- ip link set net1 down
+```
+
+Cisco が `%BGP-5-ADJCHANGE: neighbor 192.168.0.210 Down BGP Notification sent ... hold time expired`
+を出すまで、既定では最大 180 秒。`net1` を上げる (`ip link set net1 up`) と再接続する。
 
 タイマーを短くする (Cisco 側):
 
@@ -132,22 +154,30 @@ Kobe(config)# router bgp 65001
 Kobe(config-router)# neighbor 192.168.0.210 timers 10 30
 ```
 
-復旧:
+復旧 (どちらの場合も):
 
 ```bash
-bash /root/bgp-lab/run-frr.sh
+kubectl -n bgp-lab scale deploy/frr --replicas=1
+kubectl -n bgp-lab rollout restart deploy/frr
 ```
 
 ## 6. 発展: FRR をもう 1 台
 
-2 台目の FRR (例: 192.168.0.211, AS 65003) を同じ方法で立て、両方から同じネットワークを広告すると、
+2 台目の FRR (例: 192.168.0.211, AS 65003) を同じ方法 (別の NetworkAttachmentDefinition と Deployment) で立て、両方から同じネットワークを広告すると、
 AS-path prepend・MED・local-preference で Cisco の最適経路が切り替わる様子を観察できる。
 
 ## 片付け
 
 ```bash
-podman rm -f frr-bgp
-podman network rm bgp-lan
+kubectl delete -k bgp-lab
+```
+
+Multus も外すときは、DaemonSet を消したあとにホストの `00-multus.conf` も消す。残っていると、
+新しい Pod が Multus を探して起動できなくなる:
+
+```bash
+kubectl delete -k bgp-lab/k8s/multus
+ssh root@192.168.0.200 rm /etc/cni/net.d/00-multus.conf
 ```
 
 Cisco 側 (startup-config に保存済みなので、消したあと `write memory` まで行う):

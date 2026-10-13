@@ -1,0 +1,18 @@
+# FRR for the BGP lab, running as a pod with its own LAN address via Multus/macvlan.
+#   kubectl apply -k bgp-lab        (Multus must be installed first: bgp-lab/k8s/multus)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: bgp-lab
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/network.yaml
+  - k8s/frr.yaml
+
+# Editing anything under frr/ changes the ConfigMap name hash, which rolls the pod.
+configMapGenerator:
+  - name: frr-config
+    files:
+      - frr/frr.conf
+      - frr/daemons
+      - frr/vtysh.conf

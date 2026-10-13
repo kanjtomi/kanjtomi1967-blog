@@ -1,0 +1,55 @@
+# FRR (AS 65002) peering with the Cisco C841M (AS 65001).
+#   kubectl -n bgp-lab exec -it deploy/frr -- vtysh
+# Routes FRR learns are installed only in this pod's network namespace.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frr
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate            # the macvlan address is fixed; two pods would collide
+  selector:
+    matchLabels:
+      app: frr
+  template:
+    metadata:
+      labels:
+        app: frr
+      annotations:
+        k8s.v1.cni.cncf.io/networks: bgp-lan
+    spec:
+      hostname: frr-bgp
+      # FRR rewrites files in /etc/frr (chown, write memory), so copy the
+      # read-only ConfigMap into a writable emptyDir first. "write memory" only
+      # survives until the pod restarts; persistent changes go in bgp-lab/frr/.
+      initContainers:
+        - name: copy-config
+          image: quay.io/frrouting/frr:10.4.1
+          command: ["sh", "-c", "cp /config/* /etc/frr/"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: etc-frr
+              mountPath: /etc/frr
+      containers:
+        - name: frr
+          image: quay.io/frrouting/frr:10.4.1
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW", "SYS_ADMIN"]
+          volumeMounts:
+            - name: etc-frr
+              mountPath: /etc/frr
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: frr-config
+        - name: etc-frr
+          emptyDir: {}
