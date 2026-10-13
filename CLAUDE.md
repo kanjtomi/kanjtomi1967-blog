@@ -396,6 +396,24 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   controller-manager/scheduler/etcd/kube-proxy monitors are disabled (kubeadm
   binds those to 127.0.0.1). Grafana keeps no state — hand-made dashboards are
   lost when its pod is recreated. Details in `monitoring/README.md`.
+- **BGP lab (`bgp-lab/`)**: eBGP between the home Cisco C841M "Kobe"
+  (192.168.0.100 on Gi0/4, AS 65001) and an FRR 10.4.1 podman container on
+  this host (`frr-bgp`, AS 65002). The container has its own LAN address,
+  192.168.0.210, via the `bgp-lan` macvlan network on `enp3s0`: no NAT, no
+  firewalld change, and learned routes stay inside the container netns. Start
+  it with `bash /root/bgp-lab/run-frr.sh`; open the CLI with
+  `podman exec -it frr-bgp vtysh`. The Cisco is reached only through its
+  console on the Windows PC's COM3 (9600 8N1, usually held by Tera Term).
+  SSH/Telnet to the router are refused (RST) from the LAN for a reason not yet
+  identified. Config changes need `enable`, which the user does. Cisco-side BGP
+  config is saved to startup-config (2026-10-13). Lessons in `bgp-lab/README.md`.
+- **Sleep disabled (2026-10-11)**: the host used to auto-suspend through the
+  GNOME/GDM idle policy, which took the whole cluster offline. `sleep`,
+  `suspend`, `hibernate` and `hybrid-sleep` targets are now masked. While the
+  host was resuming, the kubelet filed a serving CSR for `172.17.0.1` (docker0)
+  because `enp3s0` was down. **Before approving any kubelet-serving CSR, check
+  that its SANs include `192.168.0.200`** — approving the wrong one would break
+  metrics-server TLS.
 - **Shared host**: the same machine also runs unrelated software (Oracle,
   MuleSoft, MariaDB) and has run low on root disk before — see the RHEL disk
   space note under Host-level Security Scanning below.
