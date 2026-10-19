@@ -15,3 +15,9 @@ mcp-blog-sample/.venv/
 mcp-blog-sample/__pycache__/
 security-reports/
 __pycache__/
+lambda-photo-upload/target/
+mcp-server/node_modules/
+mcp-server/dist/
+mcp-server/mcp-lambda.zip
+*.pcap
+.claude/
