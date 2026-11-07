@@ -459,20 +459,41 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   because `enp3s0` was down. **Before approving any kubelet-serving CSR, check
   that its SANs include `192.168.0.200`** — approving the wrong one would break
   metrics-server TLS.
-- **`/glide` disk**: a Samsung Portable SSD T5 over USB (ext4, fstab by UUID
-  `cb3fe9ae-…`; the device name changes, e.g. `sdb1` → `sdc1`). The whole k8s
-  runtime lives on it: `/etc/fstab` bind-mounts `/glide/k8s-data/kubelet` onto
-  `/var/lib/kubelet` (so every `emptyDir`) and `/glide/k8s-data/containerd`
+- **`/glide`**: since 2026-11-07 a bind mount of `/home/glide` (internal NVMe,
+  Samsung 970 EVO Plus, XFS on LVM `rhel-home`) — fstab line
+  `/home/glide /glide none bind,x-systemd.requires-mounts-for=/home`. The whole
+  k8s runtime lives under it: fstab also bind-mounts `/glide/k8s-data/kubelet`
+  onto `/var/lib/kubelet` (so every `emptyDir`) and `/glide/k8s-data/containerd`
   onto `/var/lib/containerd` (all images and container filesystems). Prometheus
-  data and MariaDB's datadir are there too. Until 2026-11-07 it sat in a
-  USB 2.0-only rear port (480 Mbps, about 40 MB/s). It is now on a USB 3 port
-  (bus 2, 10 Gbps): 477 MB/s sequential write and 520 MB/s read (direct I/O),
-  SMART healthy. To unplug it safely: stop kubelet, MariaDB and containerd,
-  kill any leftover container processes (their cgroups under
-  `/sys/fs/cgroup/kubepods.slice`), then unmount the bind mounts first and
-  `/glide` last. systemd remounts it as soon as it is plugged back in, so
-  unmount again before running `e2fsck -f`. Check `iostat -dxm <dev> 5` first if
-  pods hang in `ContainerCreating`.
+  data, MariaDB's datadir and the ServiceNow node (`/glide/nodes/tokyo`) are
+  there too; all paths stayed the same. SELinux has a local equivalence
+  `/home/glide = /glide` (`semanage fcontext -a -e`), so the existing
+  `/glide/mysql-data` → `mysqld_db_t` rule still applies after a relabel.
+  Measured in the tuning-lab pod: 1.4 GB/s seq write, 3.2 GB/s seq read, 124k
+  IOPS 4k random read at qd32, but only ~163 IOPS for 4k write + fsync (same as
+  the T5) — the drive's flush latency (~2.6 ms, `iostat` `f_await`) caps MariaDB
+  at ~380 commits/s single-session (~5,300/s at 32), about 2.5–3x fewer than
+  on the T5; reads are unchanged. So MariaDB now runs with
+  `innodb_flush_log_at_trx_commit = 2` (in both `/etc/my.cnf` and
+  `/etc/my.cnf.d/mariadb-server.cnf`; `/etc/my.cnf` is the one actually read —
+  it has no `!includedir`): redo log is fsynced once per second instead of per
+  commit, so an OS crash / power loss can lose up to ~1 s of commits. With
+  ServiceNow idle (it spends ~7 min after startup at 300–500% CPU on its own
+  jobs — don't benchmark during that), mysqlslap commits/s went from 380 / 1,450
+  / 5,300 (1 / 8 / 32 sessions) to ~3,100–5,400 / ~11,000 / ~10,000–12,800.
+  - **History — why it moved**: `/glide` used to be a Samsung Portable SSD T5
+    over USB (ext4, UUID `cb3fe9ae-…`). On 2026-11-07 it was moved from a
+    USB 2.0-only port to a USB 3 port, then kept disconnecting
+    (`xhci_hcd: WARN Set TR Deq Ptr cmd failed`, then `USB disconnect`) — 5
+    times in 3 hours, mostly when MariaDB/containerd/kubelet started. Every
+    drop re-enumerated it under a new name (`sdb` ↔ `sdc`), left `/glide`
+    mounted on the dead device, aborted the ext4 journal and put MariaDB into a
+    crash loop. Disabling UAS (`usb-storage.quirks=04e8:61f5:u`) did not help;
+    SMART was clean (0 CRC/uncorrectable errors), so the USB link (cable/port/
+    power) is the suspect. The data was copied off with `rsync -aHAXS
+    --numeric-ids` from a read-only mount and checksum-verified; the old fstab
+    is `/etc/fstab.bak-20261107-175151`. The T5 is left unmounted, holding
+    that copy as a backup — not in fstab anymore; the UAS quirk was removed.
 - **Shared host**: the same machine also runs unrelated software (Oracle,
   MuleSoft, MariaDB) and has run low on root disk before — see the RHEL disk
   space note under Host-level Security Scanning below.
@@ -520,8 +541,9 @@ pipeline and the k8s learning/staging replica actually run on.
     full), which silently breaks `trivy rootfs`/`trivy image`/OpenSCAP mid-scan
     with "No space left on device" rather than a clear error — check `df -h /`
     first if this script's trivy/OpenSCAP sections come back empty. MariaDB's
-    datadir was relocated to `/glide` (a larger, separate disk also shared
-    with this host's k8s kubelet volumes) to free root space; its socket path
+    datadir was relocated to `/glide` (now a bind mount of `/home/glide` on
+    the internal NVMe, shared with this host's k8s kubelet volumes) to free
+    root space; its socket path
     was moved to match (`/glide/mysql-data/mysql.sock`, set in both the
     `[mysqld]` and a new `[client]` section of `/etc/my.cnf` — a bare `mysql`
     CLI call needs the `[client]` socket override or it looks for the old

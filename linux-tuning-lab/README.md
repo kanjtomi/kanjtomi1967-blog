@@ -18,7 +18,8 @@ CPU / メモリ / ディスク I/O / ネットワークのチューニングを�
 - **特権なし**。ホスト全体に効く設定 (`vm.*`, `kernel.*` の sysctl、I/O スケジューラなど) は触れない。
   変えるのは「Pod の cgroup の上限」「Pod 単位の safe sysctl (`net.ipv4.ip_local_port_range` など)」
   「nginx の設定」だけ。
-- `/scratch` は `/glide` (Samsung T5, USB 3) 上にあり、MariaDB / ServiceNow / kubelet と共有している。
+- `/scratch` は `/glide` 上にあり、MariaDB / ServiceNow / kubelet と共有している。`/glide` は 2026-11-07 に
+  USB の Samsung T5 から内蔵 NVMe (`/home/glide` の bind mount) に移した。下の 03 の表は T5 時代の値。
   fio は 1 テスト 10 秒・1G 程度に留める。
 
 ## セットアップ
@@ -99,6 +100,10 @@ Pod の `/scenarios` に反映されるまで最大 1 分ほどかかる。Deplo
 | ランダム読み込み 4k, qd1 | 17.6 MB/s | 4,497 | 173 / 247 us |
 | ランダム読み込み 4k, qd32 | 86.0 MB/s | 22,017 | 1.4 / 4.5 ms |
 | ランダム書き込み 4k, 毎回 fsync | 0.6 MB/s | 160 | 92 us / 2.7 ms |
+
+同じテストを NVMe (970 EVO Plus) に移した後に実行すると: 順次書き込み 1,418 MB/s、順次読み込み 3,250 MB/s、
+4k qd1 11,634 IOPS、4k qd32 124,168 IOPS、fsync 毎回 163 IOPS。**fsync だけは USB SSD とほぼ同じ**
+(フラッシュの完了待ちがデバイス側で律速するため)。
 
 読み方: キュー深さを上げると IOPS は 5 倍になるが 1 件あたりの遅延も伸びる。fsync を毎回入れると
 IOPS は 2 桁落ちる (DB のコミットが遅い理由)。試すこと: `--direct=0` (ページキャッシュ経由)、
