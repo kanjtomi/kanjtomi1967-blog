@@ -386,8 +386,10 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   Re-applying the official `components.yaml` reverts this patch — re-apply it:
   `kubectl -n kube-system patch deploy metrics-server --type=json -p='[{"op":"replace","path":"/spec/template/spec/containers/0/args/1","value":"--secure-port=4443"},{"op":"replace","path":"/spec/template/spec/containers/0/ports/0/containerPort","value":4443},{"op":"add","path":"/spec/template/spec/hostNetwork","value":true},{"op":"add","path":"/spec/template/spec/dnsPolicy","value":"ClusterFirstWithHostNet"}]'`
   (check that `args[1]` is still `--secure-port=...` first)
-- **firewalld**: the `lan` zone (source `192.168.0.0/24`) opens `6443/tcp` and
-  NodePorts `30000-32767/tcp`; `trusted` covers the podman range. Pod → host
+- **firewalld**: the `lan` zone (source `192.168.0.0/24`) opens `6443/tcp`,
+  NodePorts `30000-32767/tcp`, and `16000/tcp` (the ServiceNow Tokyo node at
+  `http://192.168.0.200:16000/`, opened at the user's request 2026-11-07), plus
+  the samba and ssh services; `trusted` covers the podman range. Pod → host
   traffic falls into the `public` zone (only `dhcpv6-client`) and is rejected
   (`no route to host`) — expect this for any pod that needs to reach a host
   port. Firewall changes are the user's call — do not change them yourself,
@@ -481,6 +483,19 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   ServiceNow idle (it spends ~7 min after startup at 300–500% CPU on its own
   jobs — don't benchmark during that), mysqlslap commits/s went from 380 / 1,450
   / 5,300 (1 / 8 / 32 sessions) to ~3,100–5,400 / ~11,000 / ~10,000–12,800.
+  Further tuning the same day (also in both cnf files, backups
+  `*.bak-20261107-182040`): `innodb_log_file_size` 96M → 2G (the checkpoint age
+  had been at 46 of 79 MB), `innodb_flush_method = O_DIRECT`, `innodb_io_capacity`
+  2000 / `_max` 4000, `table_definition_cache` / `table_open_cache` 400/2000 →
+  10000 (ServiceNow has 9,143 tables; table opens dropped ~10x), `tmp_table_size`
+  / `max_heap_table_size` 16M → 64M (did **not** reduce on-disk temp tables,
+  still ~60% — ServiceNow's temp tables carry TEXT/BLOB columns, which always go
+  to disk). mysqlslap numbers stayed within run-to-run noise of the above.
+  ServiceNow heap is `-Xmx4096m` (was 2048m) via
+  `/glide/nodes/tokyo/conf/overrides.d/51-memory.properties` (backup in
+  `/root/servicenow-51-memory.properties.bak-*`; `conf/orbit-java-opts.conf`
+  is generated from it — don't edit that one). Startup to warm (~7 min) and
+  `login.do` (~120 ms p50) were unchanged by the heap increase.
   - **History — why it moved**: `/glide` used to be a Samsung Portable SSD T5
     over USB (ext4, UUID `cb3fe9ae-…`). On 2026-11-07 it was moved from a
     USB 2.0-only port to a USB 3 port, then kept disconnecting
