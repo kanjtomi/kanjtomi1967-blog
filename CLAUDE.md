@@ -362,6 +362,12 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
     `mongodb-admin` and `/root/mongodb-admin-password.txt` on the host),
     `emptyDir` data, NodePort 30017 for LAN `mongosh`. Details in
     `mongodb-lab/README.md`
+  - `tuning-lab` — Linux tuning practice lab (`linux-tuning-lab/`, `kubectl
+    apply -k linux-tuning-lab` after building `localhost/tuning-tools:local`
+    on the host with `build-image.sh`): CPU throttling, page-cache thrash /
+    OOM, fio disk I/O, and ephemeral-port exhaustion scenarios. Unprivileged,
+    every pod has limits (the host is shared with MariaDB / ServiceNow /
+    Oracle). Details in `linux-tuning-lab/README.md`
   - `mount-s3` — not managed from this repo
 - **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
   2026-10-03 so metrics-server can verify the kubelet over TLS without
@@ -425,7 +431,8 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   evicting and re-reading its file pages from `/glide`, about 40 MB/s nonstop
   (16.5 TB in 4.7 days). That saturated the USB SSD, hung containerd and
   stopped new containers starting. The kustomization now patches the limit to
-  256Mi (2026-11-07). Pods whose sandbox was recreated while Multus was starved
+  512Mi (2026-11-07; 256Mi was OOMKilled on a cold cluster start, when every
+  pod's CNI request arrives at once, with a peak of 286Mi). Pods whose sandbox was recreated while Multus was starved
   can come back without `net1` (strongswan: `Cannot find device "net1"`);
   delete the pod to get a new sandbox. The Cisco is reached only through its
   console on the Windows PC's COM3 (9600 8N1, usually held by Tera Term).
@@ -452,13 +459,19 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   because `enp3s0` was down. **Before approving any kubelet-serving CSR, check
   that its SANs include `192.168.0.200`** — approving the wrong one would break
   metrics-server TLS.
-- **`/glide` disk**: a Samsung Portable SSD T5 over USB (`sdb1`, ext4). It holds
-  `/var/lib/kubelet` (so every `emptyDir`), Prometheus data and MariaDB.
-  As of 2026-11-07 it is connected at **USB 2.0 (480 Mbps, bus 1)**, which caps
-  it at about 40 MB/s, while a 10 Gbps bus is free. Moving it to a USB 3 port
-  (needs someone at the machine, with the cluster stopped) would raise that cap
-  by about 10×. Measured after the Multus fix: 43.8 MB/s sequential write and
-  34.5 MB/s read (direct I/O); SMART healthy. Check `iostat -dxm sdb 5` first if
+- **`/glide` disk**: a Samsung Portable SSD T5 over USB (ext4, fstab by UUID
+  `cb3fe9ae-…`; the device name changes, e.g. `sdb1` → `sdc1`). The whole k8s
+  runtime lives on it: `/etc/fstab` bind-mounts `/glide/k8s-data/kubelet` onto
+  `/var/lib/kubelet` (so every `emptyDir`) and `/glide/k8s-data/containerd`
+  onto `/var/lib/containerd` (all images and container filesystems). Prometheus
+  data and MariaDB's datadir are there too. Until 2026-11-07 it sat in a
+  USB 2.0-only rear port (480 Mbps, about 40 MB/s). It is now on a USB 3 port
+  (bus 2, 10 Gbps): 477 MB/s sequential write and 520 MB/s read (direct I/O),
+  SMART healthy. To unplug it safely: stop kubelet, MariaDB and containerd,
+  kill any leftover container processes (their cgroups under
+  `/sys/fs/cgroup/kubepods.slice`), then unmount the bind mounts first and
+  `/glide` last. systemd remounts it as soon as it is plugged back in, so
+  unmount again before running `e2fsck -f`. Check `iostat -dxm <dev> 5` first if
   pods hang in `ContainerCreating`.
 - **Shared host**: the same machine also runs unrelated software (Oracle,
   MuleSoft, MariaDB) and has run low on root disk before — see the RHEL disk
