@@ -1,0 +1,40 @@
+# Test client with swaks (not packaged for Alpine, so Debian).
+#   kubectl -n smtp-dlp-lab exec deploy/client -- bash /opt/tests/run-tests.sh
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: client
+  template:
+    metadata:
+      labels:
+        app: client
+    spec:
+      containers:
+        - name: client
+          image: docker.io/library/debian:12-slim
+          command:
+            - /bin/sh
+            - -c
+            - apt-get update -qq && apt-get install -y -qq --no-install-recommends swaks zip >/dev/null && exec sleep infinity
+          volumeMounts:
+            - name: tests
+              mountPath: /opt/tests
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "command -v swaks && command -v zip"]
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: tests
+          configMap:
+            name: dlp-tests

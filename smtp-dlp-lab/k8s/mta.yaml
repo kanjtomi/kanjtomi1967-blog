@@ -1,0 +1,86 @@
+# The DLP gateway: Postfix + the DLP proxy in one pod, so they talk over
+# localhost (Postfix :25 -> dlp 127.0.0.1:10024 -> Postfix 127.0.0.1:10025).
+#   SMTP from the LAN: 192.168.0.200:30025
+#   kubectl -n smtp-dlp-lab logs -f deploy/mta -c dlp       # verdicts (JSON lines)
+#   kubectl -n smtp-dlp-lab exec deploy/mta -c dlp -- ls /quarantine
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mta
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mta
+  template:
+    metadata:
+      labels:
+        app: mta
+    spec:
+      hostname: mail
+      containers:
+        - name: postfix
+          image: docker.io/library/alpine:3.22
+          command: ["/bin/sh", "/opt/lab/start.sh"]
+          ports:
+            - name: smtp
+              containerPort: 25
+          volumeMounts:
+            - name: postfix-config
+              mountPath: /opt/lab
+          readinessProbe:       # exec, not tcpSocket: a TCP probe would log a connect every period
+            exec:
+              command: ["postfix", "status"]
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+        - name: dlp
+          image: docker.io/library/python:3.12-alpine
+          command: ["python3", "-u", "/opt/dlp/dlp_proxy.py"]
+          env:
+            - name: POLICY_FILE
+              value: /opt/dlp/policy.json
+            - name: QUARANTINE_DIR
+              value: /quarantine
+          volumeMounts:
+            - name: dlp-config
+              mountPath: /opt/dlp
+            - name: quarantine
+              mountPath: /quarantine
+          readinessProbe:       # listens on 127.0.0.1 only, which the kubelet cannot reach
+            exec:
+              command: ["python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 10024), 2).close()"]
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: postfix-config
+          configMap:
+            name: postfix-config
+        - name: dlp-config
+          configMap:
+            name: dlp-config
+        - name: quarantine
+          emptyDir: {}          # quarantined mail is disposable lab data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mta
+spec:
+  type: NodePort
+  selector:
+    app: mta
+  ports:
+    - name: smtp
+      port: 25
+      targetPort: smtp
+      nodePort: 30025

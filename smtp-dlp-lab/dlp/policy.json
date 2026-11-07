@@ -1,0 +1,33 @@
+{
+  "rules": [
+    {
+      "name": "CreditCard",
+      "type": "credit_card",
+      "min_matches": 1,
+      "action": "block"
+    },
+    {
+      "name": "ConfidentialKeyword",
+      "type": "keyword",
+      "keywords": ["社外秘", "極秘", "関係者外秘", "confidential", "internal only"],
+      "min_matches": 1,
+      "action": "block"
+    },
+    {
+      "name": "BlockedFileType",
+      "type": "file_type",
+      "extensions": [".exe", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".scr", ".msi"],
+      "action": "block"
+    },
+    {
+      "name": "UnscannableFile",
+      "type": "unscannable",
+      "action": "block"
+    }
+  ],
+  "notify": {
+    "from": "dlp-noreply@corp.lab",
+    "sender": true,
+    "auditor": "dlp-auditor@corp.lab"
+  }
+}

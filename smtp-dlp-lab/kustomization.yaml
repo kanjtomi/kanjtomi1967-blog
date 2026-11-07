@@ -1,0 +1,25 @@
+# SMTP DLP lab: Postfix + a DLP proxy (before-queue filter) + Mailpit + a swaks client.
+#   kubectl apply -k smtp-dlp-lab
+#   kubectl -n smtp-dlp-lab exec deploy/client -- bash /opt/tests/run-tests.sh
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: smtp-dlp-lab
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/mailpit.yaml
+  - k8s/mta.yaml
+  - k8s/client.yaml
+
+# Editing anything under postfix/, dlp/ or tests/ changes the ConfigMap name hash, which rolls the pods.
+configMapGenerator:
+  - name: postfix-config
+    files:
+      - postfix/start.sh
+  - name: dlp-config
+    files:
+      - dlp/dlp_proxy.py
+      - dlp/policy.json
+  - name: dlp-tests
+    files:
+      - tests/run-tests.sh
