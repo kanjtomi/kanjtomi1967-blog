@@ -357,6 +357,11 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   - `monitoring` — Prometheus + Grafana (`monitoring/`), see below
   - `bgp-lab` — FRR for the BGP lab (`bgp-lab/`), see below
   - `ipsec-lab` — strongSwan for the IPsec lab (`ipsec-lab/`), see below
+  - `mongodb-lab` — learning MongoDB 7.0 (`mongodb-lab/`, `kubectl apply -k
+    mongodb-lab`): auth on (root user `admin`, password only in Secret
+    `mongodb-admin` and `/root/mongodb-admin-password.txt` on the host),
+    `emptyDir` data, NodePort 30017 for LAN `mongosh`. Details in
+    `mongodb-lab/README.md`
   - `mount-s3` — not managed from this repo
 - **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
   2026-10-03 so metrics-server can verify the kubelet over TLS without
