@@ -1,0 +1,55 @@
+# 練習用の作業 Pod。ここに exec してシナリオ (/scenarios/*.sh) を実行する。
+#  - 特権なし。ホスト全体に効く設定 (vm.*, kernel.* の sysctl など) は触れない。
+#    触れるのは「この Pod の cgroup の上限」と「Pod 単位の safe sysctl」だけ。
+#  - ホストは MariaDB / ServiceNow / Oracle と共有なので、上限は必ず付けておく。
+#    上限を変えて結果を比べるのが練習の中心 (README 参照)。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bench
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: bench
+  template:
+    metadata:
+      labels:
+        app: bench
+    spec:
+      securityContext:
+        sysctls:
+          # わざと狭くしてある (1000 ポート)。04-network.sh でエフェメラルポート枯渇を起こすため。
+          # 練習: "32768 60999" などに広げて kubectl apply -k し直し、結果を比べる。
+          - name: net.ipv4.ip_local_port_range
+            value: "61000 61999"
+      containers:
+        - name: tools
+          image: localhost/tuning-tools:local
+          imagePullPolicy: Never
+          command: ["sleep", "infinity"]
+          securityContext:
+            capabilities:
+              add: ["SYS_PTRACE"]   # strace / pidstat を Pod 内のプロセスに使うため
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "256Mi"
+            limits:
+              cpu: "2"              # 01-cpu-throttle.sh: これを超えると CFS のスロットリング
+              memory: "1Gi"         # 02-memory.sh: ページキャッシュも含めてこの中に収まる
+          volumeMounts:
+            - name: scratch
+              mountPath: /scratch
+            - name: scenarios
+              mountPath: /scenarios
+      volumes:
+        - name: scratch             # 03-disk-io.sh / 02-memory.sh の作業場所。/glide (USB SSD) 上
+          emptyDir:
+            sizeLimit: 4Gi
+        - name: scenarios
+          configMap:
+            name: tuning-scenarios
+            defaultMode: 0755

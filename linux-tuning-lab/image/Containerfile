@@ -1,0 +1,11 @@
+# Linux チューニング練習用のツール入りイメージ。ホストで podman build → containerd に import する
+# (レジストリは使わない。build-image.sh 参照)。
+FROM docker.io/library/fedora:42
+
+RUN dnf -y install --setopt=install_weak_deps=False \
+      sysstat stress-ng fio fio-engine-libaio sysbench \
+      procps-ng htop strace util-linux numactl bc python3 hostname less \
+      iproute iputils bind-utils curl httpd-tools iperf3 \
+ && dnf clean all
+
+CMD ["sleep", "infinity"]

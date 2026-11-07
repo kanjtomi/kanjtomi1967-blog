@@ -1,0 +1,26 @@
+# Linux チューニング練習環境。 kubectl apply -k . で tuning-lab namespace に入る。
+# 先にホストで build-image.sh を実行して localhost/tuning-tools:local を入れておくこと。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tuning-lab
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/bench.yaml
+  - k8s/web.yaml
+
+configMapGenerator:
+  - name: tuning-scenarios
+    files:
+      - scenarios/observe.sh
+      - scenarios/01-cpu-throttle.sh
+      - scenarios/02-memory.sh
+      - scenarios/03-disk-io.sh
+      - scenarios/04-network.sh
+      - scenarios/client-close.py
+  - name: web-nginx
+    files:
+      - nginx/nginx.conf
+
+generatorOptions:
+  disableNameSuffixHash: true
