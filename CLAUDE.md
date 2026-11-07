@@ -420,7 +420,14 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging â€
   Calico); if Multus is ever removed, delete that file too or new pods fail
   to start. Multus first crash-looped with "too many open files": root had
   127 of 128 `fs.inotify.max_user_instances` in use. The user raised it to 512
-  in `/etc/sysctl.d/90-inotify-instances.conf` (2026-10-13). The Cisco is reached only through its
+  in `/etc/sysctl.d/90-inotify-instances.conf` (2026-10-13). Upstream gives the
+  Multus daemon a 50Mi memory limit; here it sat at that limit and kept
+  evicting and re-reading its file pages from `/glide`, about 40 MB/s nonstop
+  (16.5 TB in 4.7 days). That saturated the USB SSD, hung containerd and
+  stopped new containers starting. The kustomization now patches the limit to
+  256Mi (2026-11-07). Pods whose sandbox was recreated while Multus was starved
+  can come back without `net1` (strongswan: `Cannot find device "net1"`);
+  delete the pod to get a new sandbox. The Cisco is reached only through its
   console on the Windows PC's COM3 (9600 8N1, usually held by Tera Term).
   SSH/Telnet to the router are refused (RST) from the LAN for a reason not yet
   identified. Config changes need `enable`, which the user does. Cisco-side BGP
@@ -445,6 +452,14 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging â€
   because `enp3s0` was down. **Before approving any kubelet-serving CSR, check
   that its SANs include `192.168.0.200`** â€” approving the wrong one would break
   metrics-server TLS.
+- **`/glide` disk**: a Samsung Portable SSD T5 over USB (`sdb1`, ext4). It holds
+  `/var/lib/kubelet` (so every `emptyDir`), Prometheus data and MariaDB.
+  As of 2026-11-07 it is connected at **USB 2.0 (480 Mbps, bus 1)**, which caps
+  it at about 40 MB/s, while a 10 Gbps bus is free. Moving it to a USB 3 port
+  (needs someone at the machine, with the cluster stopped) would raise that cap
+  by about 10Ã—. Measured after the Multus fix: 43.8 MB/s sequential write and
+  34.5 MB/s read (direct I/O); SMART healthy. Check `iostat -dxm sdb 5` first if
+  pods hang in `ContainerCreating`.
 - **Shared host**: the same machine also runs unrelated software (Oracle,
   MuleSoft, MariaDB) and has run low on root disk before â€” see the RHEL disk
   space note under Host-level Security Scanning below.
