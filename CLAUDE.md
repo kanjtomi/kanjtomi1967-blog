@@ -356,6 +356,7 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   - `security-lab` — DVWA + MariaDB security-testing lab (`security-lab/`)
   - `monitoring` — Prometheus + Grafana (`monitoring/`), see below
   - `bgp-lab` — FRR for the BGP lab (`bgp-lab/`), see below
+  - `ipsec-lab` — strongSwan for the IPsec lab (`ipsec-lab/`), see below
   - `mount-s3` — not managed from this repo
 - **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
   2026-10-03 so metrics-server can verify the kubelet over TLS without
@@ -419,6 +420,19 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   SSH/Telnet to the router are refused (RST) from the LAN for a reason not yet
   identified. Config changes need `enable`, which the user does. Cisco-side BGP
   config is saved to startup-config (2026-10-13). Lessons in `bgp-lab/README.md`.
+- **IPsec lab (`ipsec-lab/`)**: IKEv1 (main mode, PSK) route-based VPN between
+  the Cisco (`Tunnel10` 169.254.200.1/30, `Loopback2` 172.16.11.0/24,
+  `crypto isakmp policy 110`, transform-set `LAB-TS`, profile `LAB-IPSEC`) and
+  strongSwan in pod `deploy/strongswan` (namespace `ipsec-lab`, `net1`
+  192.168.0.211 via Multus macvlan, XFRM interface `ipsec0` if_id 42,
+  172.16.12.0/24). The upstream `strongx509/strongswan` image has **no IKEv1**
+  (built without it), so the pod runs Alpine 3.22 and installs the
+  `strongswan` package with `apk` at start; it needs outbound internet via its
+  Calico `eth0`. The PSK is only in `/root/ipsec-lab-psk.txt` on the host and
+  Secret `ipsec-psk`; the user typed it on the Cisco. Cisco-side config is
+  saved to startup-config (2026-10-14). The Cisco also carries older AWS Site-to-Site VPN
+  config (`Tunnel1`, IKEv2 to 52.194.74.44, plus IKEv1 keyrings/profiles and
+  `crypto isakmp policy 200`); leave it alone. Lessons in `ipsec-lab/README.md`.
 - **Sleep disabled (2026-10-11)**: the host used to auto-suspend through the
   GNOME/GDM idle policy, which took the whole cluster offline. `sleep`,
   `suspend`, `hibernate` and `hybrid-sleep` targets are now masked. While the
