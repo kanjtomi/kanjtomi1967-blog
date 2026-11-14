@@ -352,10 +352,28 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
     exhaustion / OOM kill, and query verification with `EXPLAIN`. Manifests and
     the walkthrough are in `db-perf-lab/` (`kubectl apply -k db-perf-lab`); a
     copy is kept at `/root/db-perf-lab` on the host
-  - `s3-pv-lab` — S3-backed PersistentVolume lab (`s3-pv-lab/`)
+  - ~~`s3-pv-lab`~~ — S3-backed PersistentVolume lab (`s3-pv-lab/`),
+    **fully torn down 2026-11-14** (namespace, PV/PVC, Mountpoint-S3 CSI
+    driver + `aws-secret`, bucket `kanjtomi1967-k8s-s3-pv-lab`, IAM user
+    `k8s-s3-pv-lab`). Reason: its demo pod's `ls -la` loop over the S3 mount
+    re-listed ~98,500 objects every 30 s and ran S3 to ~$100/month
+    (internet data transfer + LIST requests). Never leave a pod looping over
+    an S3 mount; see `s3-pv-lab/README.md`
   - `security-lab` — DVWA + MariaDB security-testing lab (`security-lab/`)
   - `monitoring` — Prometheus + Grafana (`monitoring/`), see below
   - `bgp-lab` — FRR for the BGP lab (`bgp-lab/`), see below
+  - `ipsec-lab` — strongSwan for the IPsec lab (`ipsec-lab/`), see below
+  - `mongodb-lab` — learning MongoDB 7.0 (`mongodb-lab/`, `kubectl apply -k
+    mongodb-lab`): auth on (root user `admin`, password only in Secret
+    `mongodb-admin` and `/root/mongodb-admin-password.txt` on the host),
+    `emptyDir` data, NodePort 30017 for LAN `mongosh`. Details in
+    `mongodb-lab/README.md`
+  - `tuning-lab` — Linux tuning practice lab (`linux-tuning-lab/`, `kubectl
+    apply -k linux-tuning-lab` after building `localhost/tuning-tools:local`
+    on the host with `build-image.sh`): CPU throttling, page-cache thrash /
+    OOM, fio disk I/O, and ephemeral-port exhaustion scenarios. Unprivileged,
+    every pod has limits (the host is shared with MariaDB / ServiceNow /
+    Oracle). Details in `linux-tuning-lab/README.md`
   - `mount-s3` — not managed from this repo
 - **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
   2026-10-03 so metrics-server can verify the kubelet over TLS without
@@ -374,8 +392,10 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   Re-applying the official `components.yaml` reverts this patch — re-apply it:
   `kubectl -n kube-system patch deploy metrics-server --type=json -p='[{"op":"replace","path":"/spec/template/spec/containers/0/args/1","value":"--secure-port=4443"},{"op":"replace","path":"/spec/template/spec/containers/0/ports/0/containerPort","value":4443},{"op":"add","path":"/spec/template/spec/hostNetwork","value":true},{"op":"add","path":"/spec/template/spec/dnsPolicy","value":"ClusterFirstWithHostNet"}]'`
   (check that `args[1]` is still `--secure-port=...` first)
-- **firewalld**: the `lan` zone (source `192.168.0.0/24`) opens `6443/tcp` and
-  NodePorts `30000-32767/tcp`; `trusted` covers the podman range. Pod → host
+- **firewalld**: the `lan` zone (source `192.168.0.0/24`) opens `6443/tcp`,
+  NodePorts `30000-32767/tcp`, and `16000/tcp` (the ServiceNow Tokyo node at
+  `http://192.168.0.200:16000/`, opened at the user's request 2026-11-07), plus
+  the samba and ssh services; `trusted` covers the podman range. Pod → host
   traffic falls into the `public` zone (only `dhcpv6-client`) and is rejected
   (`no route to host`) — expect this for any pod that needs to reach a host
   port. Firewall changes are the user's call — do not change them yourself,
@@ -414,11 +434,46 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   Calico); if Multus is ever removed, delete that file too or new pods fail
   to start. Multus first crash-looped with "too many open files": root had
   127 of 128 `fs.inotify.max_user_instances` in use. The user raised it to 512
-  in `/etc/sysctl.d/90-inotify-instances.conf` (2026-10-13). The Cisco is reached only through its
+  in `/etc/sysctl.d/90-inotify-instances.conf` (2026-10-13). Upstream gives the
+  Multus daemon a 50Mi memory limit; here it sat at that limit and kept
+  evicting and re-reading its file pages from `/glide`, about 40 MB/s nonstop
+  (16.5 TB in 4.7 days). That saturated the USB SSD, hung containerd and
+  stopped new containers starting. The kustomization now patches the limit to
+  512Mi (2026-11-07; 256Mi was OOMKilled on a cold cluster start, when every
+  pod's CNI request arrives at once, with a peak of 286Mi). Pods whose sandbox was recreated while Multus was starved
+  can come back without `net1` (strongswan: `Cannot find device "net1"`);
+  delete the pod to get a new sandbox. The Cisco is reached only through its
   console on the Windows PC's COM3 (9600 8N1, usually held by Tera Term).
   SSH/Telnet to the router are refused (RST) from the LAN for a reason not yet
   identified. Config changes need `enable`, which the user does. Cisco-side BGP
   config is saved to startup-config (2026-10-13). Lessons in `bgp-lab/README.md`.
+- **IPsec lab (`ipsec-lab/`)**: IKEv1 (main mode, PSK) route-based VPN between
+  the Cisco (`Tunnel10` 169.254.200.1/30, `Loopback2` 172.16.11.0/24,
+  `crypto isakmp policy 110`, transform-set `LAB-TS`, profile `LAB-IPSEC`) and
+  strongSwan in pod `deploy/strongswan` (namespace `ipsec-lab`, `net1`
+  192.168.0.211 via Multus macvlan, XFRM interface `ipsec0` if_id 42,
+  172.16.12.0/24). The upstream `strongx509/strongswan` image has **no IKEv1**
+  (built without it), so the pod runs Alpine 3.22 and installs the
+  `strongswan` package with `apk` at start; it needs outbound internet via its
+  Calico `eth0`. The PSK is only in `/root/ipsec-lab-psk.txt` on the host and
+  Secret `ipsec-psk`; the user typed it on the Cisco. Cisco-side config is
+  saved to startup-config (2026-10-14). The Cisco also carries older AWS Site-to-Site VPN
+  config (`Tunnel1`, IKEv2 to 52.194.74.44, plus IKEv1 keyrings/profiles and
+  `crypto isakmp policy 200`); leave it alone. Lessons in `ipsec-lab/README.md`.
+- **AWS VPN lab (`aws-vpn-lab/`, added 2026-11-14)**: Ubuntu 24.04 `t4g.nano`
+  EC2 (`ap-northeast-1`, own VPC 10.20.0.0/16, private 10.20.1.10, Elastic IP
+  18.179.189.78, Terraform in `aws-vpn-lab/terraform`, local state) running
+  strongSwan, IKEv2 route-based VPN to the Cisco `Tunnel20` (169.254.201.1/30,
+  `AWSLAB-*` IKEv2/IPsec objects, route 10.20.0.0/16; saved to
+  startup-config). Reaches 10.10.10.0/24 and 10.10.11.0/24 only. The Cisco
+  initiates (NAT-T, no home-router port forward); the EC2 only responds. Turn
+  the instance on/off from the Windows PC with
+  `aws-vpn-lab\scripts\vm.ps1 start|stop|status|ssh` (the tunnel comes back
+  by itself after a start). EventBridge Scheduler `aws-vpn-lab-auto-stop`
+  stops it every night at 23:00 Asia/Tokyo (no auto-start). PSK only in `aws-vpn-lab/secrets/psk.txt`
+  (gitignored) and on the Cisco; the user typed it there. The security group
+  only allows the home public IP — if it changes, update `home_cidr` in
+  `terraform.tfvars` and re-apply. Details in `aws-vpn-lab/README.md`.
 - **Sleep disabled (2026-10-11)**: the host used to auto-suspend through the
   GNOME/GDM idle policy, which took the whole cluster offline. `sleep`,
   `suspend`, `hibernate` and `hybrid-sleep` targets are now masked. While the
@@ -426,6 +481,66 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   because `enp3s0` was down. **Before approving any kubelet-serving CSR, check
   that its SANs include `192.168.0.200`** — approving the wrong one would break
   metrics-server TLS.
+- **`/glide`**: since 2026-11-07 a bind mount of `/home/glide` (internal NVMe,
+  Samsung 970 EVO Plus, XFS on LVM `rhel-home`) — fstab line
+  `/home/glide /glide none bind,x-systemd.requires-mounts-for=/home`. The whole
+  k8s runtime lives under it: fstab also bind-mounts `/glide/k8s-data/kubelet`
+  onto `/var/lib/kubelet` (so every `emptyDir`) and `/glide/k8s-data/containerd`
+  onto `/var/lib/containerd` (all images and container filesystems). Prometheus
+  data, MariaDB's datadir and the ServiceNow node (`/glide/nodes/tokyo`) are
+  there too; all paths stayed the same. SELinux has a local equivalence
+  `/home/glide = /glide` (`semanage fcontext -a -e`), so the existing
+  `/glide/mysql-data` → `mysqld_db_t` rule still applies after a relabel.
+  Measured in the tuning-lab pod: 1.4 GB/s seq write, 3.2 GB/s seq read, 124k
+  IOPS 4k random read at qd32, but only ~163 IOPS for 4k write + fsync (same as
+  the T5) — the drive's flush latency (~2.6 ms, `iostat` `f_await`) caps MariaDB
+  at ~380 commits/s single-session (~5,300/s at 32), about 2.5–3x fewer than
+  on the T5; reads are unchanged. So MariaDB now runs with
+  `innodb_flush_log_at_trx_commit = 2` (in both `/etc/my.cnf` and
+  `/etc/my.cnf.d/mariadb-server.cnf`; `/etc/my.cnf` is the one actually read —
+  it has no `!includedir`): redo log is fsynced once per second instead of per
+  commit, so an OS crash / power loss can lose up to ~1 s of commits. With
+  ServiceNow idle (it spends ~7 min after startup at 300–500% CPU on its own
+  jobs — don't benchmark during that), mysqlslap commits/s went from 380 / 1,450
+  / 5,300 (1 / 8 / 32 sessions) to ~3,100–5,400 / ~11,000 / ~10,000–12,800.
+  Further tuning the same day (also in both cnf files, backups
+  `*.bak-20261107-182040`): `innodb_log_file_size` 96M → 2G (the checkpoint age
+  had been at 46 of 79 MB), `innodb_flush_method = O_DIRECT`, `innodb_io_capacity`
+  2000 / `_max` 4000, `table_definition_cache` / `table_open_cache` 400/2000 →
+  10000 (ServiceNow has 9,143 tables; table opens dropped ~10x), `tmp_table_size`
+  / `max_heap_table_size` 16M → 64M (did **not** reduce on-disk temp tables,
+  still ~60% — ServiceNow's temp tables carry TEXT/BLOB columns, which always go
+  to disk). mysqlslap numbers stayed within run-to-run noise of the above.
+  ServiceNow heap is `-Xmx4096m` (was 2048m) via
+  `/glide/nodes/tokyo/conf/overrides.d/51-memory.properties` (backup in
+  `/root/servicenow-51-memory.properties.bak-*`; `conf/orbit-java-opts.conf`
+  is generated from it — don't edit that one). Startup to warm (~7 min) and
+  `login.do` (~120 ms p50) were unchanged by the heap increase.
+  `-Xmn512m` was added to the same line on 2026-11-08 (ServiceNow's `-Xms128m`
+  kept the young gen at 128 MB, so ParNew ran ~1.5x/s under load and stopped
+  all threads ~8% of the time) — but with `-Xms128m` still in place the JVM
+  only raised the young gen's *max* to 512 MB and kept it at 128 MB
+  (`jstat -gccapacity` NGC), so it had no effect; `-Xms` must be raised too. A JFR profile of 16-client `login.do` load
+  showed java CPU-bound at ~12 of 20 hardware threads, spread over
+  ServiceNow's own rendering (Jelly, Rhino JS, XML, map lookups) — no single
+  hotspot; background scheduler jobs took ~19% of samples. Profiling caveats:
+  the security manager only lets the JVM write under its allowed paths
+  (`java.io.tmpdir` = `/glide/nodes/tokyo/tmp`, wiped on startup), and a
+  `JFR.start` triggered a ~3 min JIT recompile storm (~1,100% CPU) — wait for
+  `jcmd <pid> Compiler.queue` to drain before measuring.
+  - **History — why it moved**: `/glide` used to be a Samsung Portable SSD T5
+    over USB (ext4, UUID `cb3fe9ae-…`). On 2026-11-07 it was moved from a
+    USB 2.0-only port to a USB 3 port, then kept disconnecting
+    (`xhci_hcd: WARN Set TR Deq Ptr cmd failed`, then `USB disconnect`) — 5
+    times in 3 hours, mostly when MariaDB/containerd/kubelet started. Every
+    drop re-enumerated it under a new name (`sdb` ↔ `sdc`), left `/glide`
+    mounted on the dead device, aborted the ext4 journal and put MariaDB into a
+    crash loop. Disabling UAS (`usb-storage.quirks=04e8:61f5:u`) did not help;
+    SMART was clean (0 CRC/uncorrectable errors), so the USB link (cable/port/
+    power) is the suspect. The data was copied off with `rsync -aHAXS
+    --numeric-ids` from a read-only mount and checksum-verified; the old fstab
+    is `/etc/fstab.bak-20261107-175151`. The T5 is left unmounted, holding
+    that copy as a backup — not in fstab anymore; the UAS quirk was removed.
 - **Shared host**: the same machine also runs unrelated software (Oracle,
   MuleSoft, MariaDB) and has run low on root disk before — see the RHEL disk
   space note under Host-level Security Scanning below.
@@ -473,8 +588,9 @@ pipeline and the k8s learning/staging replica actually run on.
     full), which silently breaks `trivy rootfs`/`trivy image`/OpenSCAP mid-scan
     with "No space left on device" rather than a clear error — check `df -h /`
     first if this script's trivy/OpenSCAP sections come back empty. MariaDB's
-    datadir was relocated to `/glide` (a larger, separate disk also shared
-    with this host's k8s kubelet volumes) to free root space; its socket path
+    datadir was relocated to `/glide` (now a bind mount of `/home/glide` on
+    the internal NVMe, shared with this host's k8s kubelet volumes) to free
+    root space; its socket path
     was moved to match (`/glide/mysql-data/mysql.sock`, set in both the
     `[mysqld]` and a new `[client]` section of `/etc/my.cnf` — a bare `mysql`
     CLI call needs the `[client]` socket override or it looks for the old

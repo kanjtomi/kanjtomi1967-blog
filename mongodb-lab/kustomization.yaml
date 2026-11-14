@@ -1,0 +1,9 @@
+# 学習用 MongoDB 7.0。 kubectl apply -k . で mongodb-lab namespace に入る。
+# 前提: Secret mongodb-admin (キー: username / password) を先に作っておく (README 参照、git には入れない)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mongodb-lab
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/mongodb.yaml

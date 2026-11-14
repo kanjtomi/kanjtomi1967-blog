@@ -8,3 +8,22 @@ resources:
 images:
   - name: ghcr.io/k8snetworkplumbingwg/multus-cni
     newTag: v4.3.1-thick
+# Upstream sets memory 50Mi (request = limit). On this node the daemon sat at that limit
+# and the kernel kept evicting and re-reading its file pages from /glide (USB SSD):
+# ~40 MB/s of reads nonstop, 16.5 TB in 4.7 days, which starved every other pod's I/O
+# (2026-11-07). Give it headroom. 256Mi was then OOMKilled on a cold cluster start, when
+# every pod's CNI ADD hits the daemon at once; steady state is ~140Mi (mostly file cache).
+patches:
+  - target:
+      kind: DaemonSet
+      name: kube-multus-ds
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 100m
+            memory: 512Mi

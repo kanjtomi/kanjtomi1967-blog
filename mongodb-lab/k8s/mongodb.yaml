@@ -1,0 +1,73 @@
+# 学習用 MongoDB。本番用ではない:
+#  - 認証あり。root ユーザーは Secret mongodb-admin から初回起動時に作られる
+#    (MONGO_INITDB_ROOT_* は データディレクトリが空のときだけ効く)。
+#  - データは emptyDir。コンテナ再起動では残るが、Pod を消すと消え、次の Pod で root ユーザーから作り直し。
+#  - LAN からは NodePort 30017 (firewalld の lan ゾーンで 30000-32767 は開いている)。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongod
+          image: docker.io/library/mongo:7.0.45
+          # cgroup の memory limit に合わせて WiredTiger キャッシュを明示的に絞る
+          args: ["--wiredTigerCacheSizeGB", "0.5"]
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-admin
+                  key: username
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-admin
+                  key: password
+          ports:
+            - containerPort: 27017
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          # 初回起動時、イメージの entrypoint はまず 127.0.0.1 だけで listen する一時 mongod (認証なし) で
+          # root ユーザーを作り、その後に本番の mongod を 0.0.0.0 で起動し直す。
+          # exec で localhost に ping すると一時 mongod で Ready になってしまうので、Pod IP への TCP で見る。
+          readinessProbe:
+            tcpSocket:
+              port: 27017
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+spec:
+  selector:
+    app: mongodb
+  ports:
+    - port: 27017
+      targetPort: 27017
+      nodePort: 30017
+  type: NodePort

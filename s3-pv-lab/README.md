@@ -13,6 +13,22 @@ S3 bucket via the AWS CLI directly, and confirmed to **survive
 `kubectl delete pod` + recreate** — proving the data lives in S3, not in
 container-local storage.
 
+**Demo pod deleted 2026-11-14 — do not leave it running.** Its loop writes
+one file every 30 s and runs `ls -la /data`; on a Mountpoint-S3 volume every
+`ls` is a full S3 LIST of the bucket, sent from Tokyo to the home cluster
+over the internet. By November the bucket held ~98,500 tiny files, so each
+pass was ~100 LIST requests and tens of MB of listing XML: ~48 GB/day of S3
+data transfer out and ~250k requests/day — S3 cost $101.89 in October 2026
+and ~$6.6/day (and rising) in November. **The whole lab was
+torn down the same day**: the ~98,500 objects and the bucket, the PVC/PV and
+the `s3-pv-lab` namespace, the `aws-mountpoint-s3-csi-driver` Helm release
+(and with it the `mount-s3` namespace), the `aws-secret` in `kube-system`,
+and the IAM user `k8s-s3-pv-lab` with its access key and inline policy.
+Nothing of it exists in AWS or on the cluster anymore; this directory is kept
+as a record. To run it again, follow the setup below from step 1. If you re-run the demo, change the
+loop so it does not list the whole bucket (or stops after a few writes), and
+delete the pod when done.
+
 ## AWS resources (created manually, not Terraform-managed)
 
 Kept out of the main Terraform stack deliberately — same reasoning as
@@ -94,6 +110,7 @@ Then, in AWS (not automated — infra/credential teardown is the user's
 call, same as everywhere else in this repo):
 
 ```bash
+# bucket: already emptied and deleted on 2026-11-14
 aws s3 rm s3://kanjtomi1967-k8s-s3-pv-lab --recursive
 aws s3api delete-bucket --bucket kanjtomi1967-k8s-s3-pv-lab --region ap-northeast-1
 aws iam delete-access-key --user-name k8s-s3-pv-lab --access-key-id <the access key ID>

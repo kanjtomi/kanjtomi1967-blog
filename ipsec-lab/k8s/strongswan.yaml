@@ -1,0 +1,56 @@
+# strongSwan (IKEv2) VPN endpoint for the IPsec lab.
+#   kubectl -n ipsec-lab exec deploy/strongswan -- swanctl --list-sas
+# The xfrm state/policies and the ipsec0 interface live only in this pod's
+# network namespace.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strongswan
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate            # the macvlan address is fixed; two pods would collide
+  selector:
+    matchLabels:
+      app: strongswan
+  template:
+    metadata:
+      labels:
+        app: strongswan
+      annotations:
+        k8s.v1.cni.cncf.io/networks: ipsec-lan
+    spec:
+      hostname: strongswan
+      containers:
+        - name: strongswan
+          # Alpine's strongswan package supports IKEv1; strongx509/strongswan does not.
+          image: docker.io/library/alpine:3.22
+          command: ["/bin/sh", "-c", "apk add --no-cache -q bash && exec bash /opt/lab/start.sh"]
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+          volumeMounts:
+            - name: config
+              mountPath: /opt/lab
+            - name: config
+              mountPath: /etc/swanctl/swanctl.conf
+              subPath: swanctl.conf
+            - name: config
+              mountPath: /etc/strongswan.d/zz-lab-logging.conf
+              subPath: logging.conf
+            - name: psk
+              mountPath: /etc/swanctl/secrets
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: strongswan-config
+        - name: psk
+          secret:
+            secretName: ipsec-psk

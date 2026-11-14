@@ -1,0 +1,18 @@
+# strongSwan for the IPsec lab, running as a pod with its own LAN address via Multus/macvlan.
+#   kubectl apply -k ipsec-lab      (Multus from bgp-lab/k8s/multus, and the Secret ipsec-psk, must exist first)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ipsec-lab
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/network.yaml
+  - k8s/strongswan.yaml
+
+# Editing anything under strongswan/ changes the ConfigMap name hash, which rolls the pod.
+configMapGenerator:
+  - name: strongswan-config
+    files:
+      - strongswan/swanctl.conf
+      - strongswan/logging.conf
+      - strongswan/start.sh
