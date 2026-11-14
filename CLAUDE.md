@@ -352,6 +352,13 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
     exhaustion / OOM kill, and query verification with `EXPLAIN`. Manifests and
     the walkthrough are in `db-perf-lab/` (`kubectl apply -k db-perf-lab`); a
     copy is kept at `/root/db-perf-lab` on the host
+  - `iscsi-pv-lab` — iSCSI PV lab (`iscsi-pv-lab/`, added 2026-11-14): a
+    10 GiB LUN from the LIO target on Zadara (`10.10.11.6:3260`,
+    `iqn.2026-11.local.kanjhome.zadara:k8s-pv1`, LV
+    `ubuntu-vg/k8s-iscsi-pv1`, ACL = this node's initiator IQN, no CHAP)
+    as a static in-tree `iscsi` PV (ext4, RWO). `iscsid.socket` is enabled
+    on the host; the kubelet does the login. Zadara's Cinder (`lioadm`)
+    shares the same LIO — never `targetcli clearconfig` there
   - ~~`s3-pv-lab`~~ — S3-backed PersistentVolume lab (`s3-pv-lab/`),
     **fully torn down 2026-11-14** (namespace, PV/PVC, Mountpoint-S3 CSI
     driver + `aws-secret`, bucket `kanjtomi1967-k8s-s3-pv-lab`, IAM user

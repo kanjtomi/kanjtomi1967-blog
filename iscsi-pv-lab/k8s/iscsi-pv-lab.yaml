@@ -1,0 +1,65 @@
+# iSCSI PersistentVolume lab: a 10 GiB LUN served by LIO on Zadara
+# (10.10.11.6:3260) mounted into a pod on the home RHEL cluster.
+# Static provisioning with the in-tree `iscsi` volume type: the kubelet on the
+# node logs in with iscsiadm (iscsid must be running on the host), formats the
+# LUN as ext4 on first use, and mounts it into the pod.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iscsi-pv-lab
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: iscsi-pv-lab-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: ["ReadWriteOnce"]   # a block LUN with ext4: one node at a time
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: iscsi-pv-lab
+    name: iscsi-pv-lab-pvc
+  iscsi:
+    targetPortal: 10.10.11.6:3260
+    iqn: iqn.2026-11.local.kanjhome.zadara:k8s-pv1
+    lun: 0
+    fsType: ext4
+    readOnly: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: iscsi-pv-lab-pvc
+  namespace: iscsi-pv-lab
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: ""
+  volumeName: iscsi-pv-lab-pv
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: iscsi-pv-lab-demo
+  namespace: iscsi-pv-lab
+spec:
+  containers:
+    - name: demo
+      image: localhost/busybox:local
+      imagePullPolicy: Never
+      # Write one line per start, then idle. No loop over the volume.
+      command: ["sh", "-c", "echo \"started on $(hostname) at $(date -Iseconds)\" >> /data/boot.log; cat /data/boot.log; df -h /data; sleep infinity"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+      resources:
+        requests: { cpu: 10m, memory: 16Mi }
+        limits: { cpu: 100m, memory: 64Mi }
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: iscsi-pv-lab-pvc
