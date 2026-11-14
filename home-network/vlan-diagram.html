@@ -1,0 +1,227 @@
+<title>Kobe VLAN 構成</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* Layout: one wide topology drawing (scrolls sideways on phones), then a port table and the packet path, single column. */
+:root {
+  --bg: #f5f7f8;
+  --panel: #ffffff;
+  --fg: #17212b;
+  --muted: #5b6875;
+  --line: #c9d1d8;
+  --lan: #7d8a96;
+  --v1: #1f78b4;
+  --v1-soft: #e3eff8;
+  --v10: #c26a00;
+  --v10-soft: #fbeedd;
+  --ext: #6b5bb5;
+  --font-body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11171c; --panel: #182128; --fg: #e4eaef; --muted: #98a6b3; --line: #33414c; --lan: #8a97a3;
+    --v1: #5fb0ea; --v1-soft: #15293a; --v10: #f0a04b; --v10-soft: #33240f; --ext: #a89bf0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11171c; --panel: #182128; --fg: #e4eaef; --muted: #98a6b3; --line: #33414c; --lan: #8a97a3;
+  --v1: #5fb0ea; --v1-soft: #15293a; --v10: #f0a04b; --v10-soft: #33240f; --ext: #a89bf0;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); line-height: 1.6; }
+.wrap {
+  max-width: 1040px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+  display: grid; gap: 28px;
+}
+header { display: grid; gap: 6px; }
+h1 { font-size: 1.6rem; margin: 0; text-wrap: balance; letter-spacing: 0.01em; }
+h2 { font-size: 1.1rem; margin: 0 0 10px; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 68ch; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-family: var(--font-mono); font-size: 0.8rem; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.chip.v1 { color: var(--v1); background: var(--v1-soft); border-color: transparent; }
+.chip.v10 { color: var(--v10); background: var(--v10-soft); border-color: transparent; }
+.diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+.diagram svg { display: block; min-width: 760px; width: 100%; height: auto; }
+svg text { font-family: var(--font-body); fill: var(--fg); font-size: 13px; }
+svg .mono { font-family: var(--font-mono); font-size: 12px; }
+svg .small { font-size: 11.5px; fill: var(--muted); }
+svg .title { font-weight: 700; font-size: 14px; }
+svg .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+svg .box-strong { fill: var(--panel); stroke: var(--fg); stroke-width: 1.5; }
+svg .svi1 { fill: var(--v1-soft); stroke: var(--v1); stroke-width: 1.2; }
+svg .svi10 { fill: var(--v10-soft); stroke: var(--v10); stroke-width: 1.2; }
+svg .t1 { fill: var(--v1); } svg .t10 { fill: var(--v10); } svg .text-ext { fill: var(--ext); }
+svg .l-lan { stroke: var(--lan); stroke-width: 3; fill: none; }
+svg .l1 { stroke: var(--v1); stroke-width: 3; fill: none; }
+svg .l10 { stroke: var(--v10); stroke-width: 3; fill: none; stroke-dasharray: 7 4; }
+svg .port { fill: var(--fg); }
+svg .ext { fill: none; stroke: var(--ext); stroke-width: 1.2; stroke-dasharray: 4 3; }
+section { display: grid; gap: 4px; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.9rem; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 500; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.04em; }
+tr:last-child td { border-bottom: 0; }
+td code, li code { font-family: var(--font-mono); font-size: 0.85em; }
+.tag { font-family: var(--font-mono); font-size: 0.78rem; padding: 1px 8px; border-radius: 4px; white-space: nowrap; }
+.tag.v1 { color: var(--v1); background: var(--v1-soft); }
+.tag.v10 { color: var(--v10); background: var(--v10-soft); }
+.tag.lan { color: var(--muted); border: 1px solid var(--line); }
+ol.path { margin: 0; padding-left: 1.4em; display: grid; gap: 4px; max-width: 72ch; }
+.note { color: var(--muted); font-size: 0.88rem; margin: 6px 0 0; max-width: 72ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Kobe VLAN 構成</h1>
+    <p class="lede">Cisco C841M「Kobe」の配下を 2 つの VLAN に分け、CBS250 スイッチを通して Zadara まで運んでいる構成。Kobe が 2 つの VLAN の間と自宅 LAN をルーティングする。</p>
+    <div class="chips">
+      <span class="chip v1">VLAN 1 · 10.10.10.0/24 · untagged</span>
+      <span class="chip v10">VLAN 10 "ZADARA" · 10.10.11.0/24 · 802.1Q tagged</span>
+      <span class="chip">自宅 LAN 192.168.0.0/24 · VLAN なし</span>
+    </div>
+  </header>
+
+  <div class="diagram" role="img" aria-label="VLAN 構成図: 自宅ルーターと自宅 LAN の下に Cisco Kobe、その Gi0/0 に Raspberry Pi、Gi0/1 のトランクに CBS250、CBS250 の GE2 のトランクに Zadara がつながる">
+    <svg viewBox="0 0 960 700" xmlns="http://www.w3.org/2000/svg">
+      <!-- home router -->
+      <rect class="box" x="360" y="20" width="240" height="56" rx="8"/>
+      <text class="title" x="480" y="44" text-anchor="middle">自宅ルーター</text>
+      <text class="mono" x="480" y="64" text-anchor="middle">192.168.0.1</text>
+      <line class="l-lan" x1="480" y1="76" x2="480" y2="112"/>
+
+      <!-- home LAN bus -->
+      <line class="l-lan" x1="90" y1="112" x2="870" y2="112"/>
+      <text class="small" x="90" y="102">自宅 LAN 192.168.0.0/24（VLAN なし）</text>
+      <text class="small" x="870" y="102" text-anchor="end">10.10.10.x / 10.10.11.x 宛は 192.168.0.100 へ</text>
+
+      <!-- Windows PC -->
+      <line class="l-lan" x1="170" y1="112" x2="170" y2="146"/>
+      <rect class="box" x="90" y="146" width="160" height="52" rx="8"/>
+      <text class="title" x="170" y="168" text-anchor="middle">Windows PC</text>
+      <text class="mono" x="170" y="187" text-anchor="middle">192.168.0.22</text>
+
+      <!-- RHEL -->
+      <line class="l-lan" x1="790" y1="112" x2="790" y2="146"/>
+      <rect class="box" x="700" y="146" width="180" height="68" rx="8"/>
+      <text class="title" x="790" y="168" text-anchor="middle">RHEL k8s</text>
+      <text class="mono" x="790" y="187" text-anchor="middle">192.168.0.200</text>
+      <text class="small" x="790" y="204" text-anchor="middle">iSCSI イニシエーター</text>
+
+      <!-- Kobe -->
+      <line class="l-lan" x1="480" y1="112" x2="480" y2="176"/>
+      <rect class="box-strong" x="290" y="176" width="380" height="166" rx="10"/>
+      <rect class="port" x="473" y="171" width="14" height="10" rx="2"/>
+      <text class="mono" x="494" y="195">Gi0/4 192.168.0.100（routed）</text>
+      <text class="title" x="306" y="212">Cisco C841M "Kobe"</text>
+      <text class="small" x="306" y="230">VLAN 間ルーティング（SVI）</text>
+      <rect class="svi1" x="306" y="244" width="150" height="48" rx="6"/>
+      <text class="t1 mono" x="381" y="264" text-anchor="middle">interface Vlan1</text>
+      <text class="mono" x="381" y="282" text-anchor="middle">10.10.10.1/24</text>
+      <rect class="svi10" x="504" y="244" width="150" height="48" rx="6"/>
+      <text class="t10 mono" x="579" y="264" text-anchor="middle">interface Vlan10</text>
+      <text class="mono" x="579" y="282" text-anchor="middle">10.10.11.1/24</text>
+      <path class="l-lan" d="M458 268 H502" stroke-width="1.5"/>
+      <path d="M496 264 L502 268 L496 272" fill="none" stroke="var(--lan)" stroke-width="1.5"/>
+      <path d="M464 264 L458 268 L464 272" fill="none" stroke="var(--lan)" stroke-width="1.5"/>
+      <text class="small" x="306" y="320">DHCP ccp-pool: 10.10.10.0/25 を配布</text>
+      <!-- Kobe ports -->
+      <rect class="port" x="373" y="337" width="14" height="10" rx="2"/>
+      <rect class="port" x="573" y="337" width="14" height="10" rx="2"/>
+
+      <!-- Gi0/0 -> Pi (access VLAN1) -->
+      <line class="l1" x1="380" y1="347" x2="380" y2="420"/>
+      <text class="mono" x="388" y="370">Gi0/0</text>
+      <text class="t1 small" x="388" y="386">access VLAN 1</text>
+      <rect class="box" x="290" y="420" width="180" height="68" rx="8"/>
+      <text class="title" x="380" y="442" text-anchor="middle">Raspberry Pi 3B+</text>
+      <text class="mono" x="380" y="461" text-anchor="middle">10.10.10.53（固定）</text>
+      <text class="t1 small" x="380" y="478" text-anchor="middle">VLAN 1</text>
+
+      <!-- Gi0/1 -> CBS250 GE1 (trunk) -->
+      <line class="l1" x1="574" y1="347" x2="574" y2="420"/>
+      <line class="l10" x1="586" y1="347" x2="586" y2="420"/>
+      <text class="mono" x="596" y="370">Gi0/1 ⇄ GE1</text>
+      <text class="small" x="596" y="386">802.1Q トランク（native VLAN 1）</text>
+
+      <!-- CBS250 -->
+      <rect class="box-strong" x="500" y="420" width="380" height="96" rx="10"/>
+      <rect class="port" x="573" y="415" width="14" height="10" rx="2"/>
+      <text class="title" x="516" y="446">Cisco CBS250-8T-D</text>
+      <text class="mono small" x="516" y="466">mgmt 10.10.10.3（VLAN 1, DHCP）</text>
+      <text class="small" x="516" y="486">GE1・GE2: トランク（VLAN 1 untagged + VLAN 10 tagged）</text>
+      <text class="small" x="516" y="504">GE3〜GE8: VLAN 1 アクセス（未使用）</text>
+      <rect class="port" x="673" y="511" width="14" height="10" rx="2"/>
+
+      <!-- GE2 -> Zadara (trunk) -->
+      <line class="l1" x1="674" y1="521" x2="674" y2="572"/>
+      <line class="l10" x1="686" y1="521" x2="686" y2="572"/>
+      <text class="mono" x="696" y="544">GE2 ⇄ enp2s0</text>
+      <text class="small" x="696" y="560">トランク</text>
+
+      <!-- Zadara -->
+      <rect class="box-strong" x="440" y="572" width="440" height="118" rx="10"/>
+      <text class="title" x="456" y="596">Zadara（Ubuntu 24.04 · DevStack）</text>
+      <rect class="svi1" x="456" y="608" width="196" height="70" rx="6"/>
+      <text class="t1 mono" x="468" y="627">enp2s0（untagged）</text>
+      <text class="mono" x="468" y="645">10.10.10.4/25（DHCP）</text>
+      <text class="small" x="468" y="663">デフォルトルート → 10.10.10.1</text>
+      <rect class="svi10" x="668" y="608" width="196" height="70" rx="6"/>
+      <text class="t10 mono" x="680" y="627">enp2s0.10（VLAN 10）</text>
+      <text class="mono" x="680" y="645">10.10.11.6/24（固定）</text>
+      <text class="small" x="680" y="663">Horizon · API · iSCSI :3260</text>
+
+      <!-- OpenStack external net -->
+      <rect class="ext" x="250" y="616" width="170" height="54" rx="6"/>
+      <text class="text-ext mono" x="335" y="637" text-anchor="middle">br-ex 172.24.4.1/24</text>
+      <text class="small" x="335" y="656" text-anchor="middle">Floating IP（Zadara 内だけ）</text>
+      <line class="ext" x1="420" y1="643" x2="456" y2="643"/>
+
+      <!-- legend -->
+      <g transform="translate(40 540)">
+        <text class="small" x="0" y="0">凡例</text>
+        <line class="l1" x1="0" y1="18" x2="40" y2="18"/><text class="small" x="50" y="22">VLAN 1（タグなし）</text>
+        <line class="l10" x1="0" y1="40" x2="40" y2="40"/><text class="small" x="50" y="44">VLAN 10（802.1Q タグ付き）</text>
+        <line class="l-lan" x1="0" y1="62" x2="40" y2="62"/><text class="small" x="50" y="66">自宅 LAN（VLAN なし）</text>
+      </g>
+    </svg>
+  </div>
+
+  <section>
+    <h2>ポートと VLAN</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>機器 · ポート</th><th>モード</th><th>VLAN</th><th>つながる先 · アドレス</th></tr></thead>
+        <tbody>
+          <tr><td>Kobe <code>Gi0/4</code></td><td>ルーテッド</td><td><span class="tag lan">なし</span></td><td>自宅 LAN、<code>192.168.0.100/24</code>、デフォルトルート → 192.168.0.1</td></tr>
+          <tr><td>Kobe <code>Gi0/0</code></td><td>アクセス</td><td><span class="tag v1">1</span></td><td>Raspberry Pi 3B+ <code>10.10.10.53</code></td></tr>
+          <tr><td>Kobe <code>Gi0/1</code></td><td>トランク（native 1）</td><td><span class="tag v1">1</span> <span class="tag v10">10</span></td><td>CBS250 <code>GE1</code></td></tr>
+          <tr><td>Kobe <code>Vlan1</code> / <code>Vlan10</code></td><td>SVI</td><td><span class="tag v1">1</span> <span class="tag v10">10</span></td><td><code>10.10.10.1/24</code>（DHCP あり）/ <code>10.10.11.1/24</code>（DHCP なし）</td></tr>
+          <tr><td>CBS250 <code>GE1</code> / <code>GE2</code></td><td>トランク</td><td><span class="tag v1">1 untagged</span> <span class="tag v10">10 tagged</span></td><td>Kobe <code>Gi0/1</code> / Zadara <code>enp2s0</code></td></tr>
+          <tr><td>CBS250 管理</td><td>—</td><td><span class="tag v1">1</span></td><td><code>10.10.10.3</code>（DHCP、Web UI は HTTP）</td></tr>
+          <tr><td>Zadara <code>enp2s0</code></td><td>タグなし</td><td><span class="tag v1">1</span></td><td><code>10.10.10.4/25</code>（DHCP）、デフォルトルート</td></tr>
+          <tr><td>Zadara <code>enp2s0.10</code></td><td>サブインターフェース</td><td><span class="tag v10">10</span></td><td><code>10.10.11.6/24</code>（netplan <code>90-vlan10.yaml</code>、ゲートウェイなし）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>通信の流れの例: RHEL の k8s から Zadara の iSCSI</h2>
+    <ol class="path">
+      <li>RHEL <code>192.168.0.200</code> → 自宅ルーター <code>192.168.0.1</code>（静的ルートで 192.168.0.100 へ）</li>
+      <li>Kobe <code>Gi0/4</code> で受け、<code>Vlan10</code> の SVI へルーティング</li>
+      <li><code>Gi0/1</code> から VLAN 10 のタグを付けて CBS250 <code>GE1</code> へ</li>
+      <li>CBS250 が VLAN 10 のまま <code>GE2</code> へ転送</li>
+      <li>Zadara の <code>enp2s0.10</code> がタグを外して受け取る（<code>10.10.11.6:3260</code>）</li>
+    </ol>
+    <p class="note">戻りのパケットは Zadara のデフォルトルートに従い、VLAN 1（<code>enp2s0</code> → 10.10.10.1）から出ていく。行きと帰りで VLAN が違うが、どちらも Kobe を通るので通信は成り立つ。</p>
+  </section>
+</div>

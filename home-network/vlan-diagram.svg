@@ -1,0 +1,121 @@
+<svg viewBox="0 0 960 700" xmlns="http://www.w3.org/2000/svg" width="960" height="700">
+<style>
+text{font-family:'IBM Plex Sans JP','Hiragino Sans','Yu Gothic UI',sans-serif;font-size:13px;fill:#17212b}
+x{ font-family: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif; fill: #17212b; font-size: 13px; }
+.mono { font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+.small { font-size: 11.5px; fill: #5b6875; }
+.title { font-weight: 700; font-size: 14px; }
+.box { fill: #ffffff; stroke: #c9d1d8; stroke-width: 1.5; }
+.box-strong { fill: #ffffff; stroke: #17212b; stroke-width: 1.5; }
+.svi1 { fill: #e3eff8; stroke: #1f78b4; stroke-width: 1.2; }
+.svi10 { fill: #fbeedd; stroke: #c26a00; stroke-width: 1.2; }
+.t1 { fill: #1f78b4; } .t10 { fill: #c26a00; } .text-ext { fill: #6b5bb5; }
+.l-lan { stroke: #7d8a96; stroke-width: 3; fill: none; }
+.l1 { stroke: #1f78b4; stroke-width: 3; fill: none; }
+.l10 { stroke: #c26a00; stroke-width: 3; fill: none; stroke-dasharray: 7 4; }
+.port { fill: #17212b; }
+.ext { fill: none; stroke: #6b5bb5; stroke-width: 1.2; stroke-dasharray: 4 3; }
+</style>
+<rect width="960" height="700" fill="#ffffff"/>
+
+      <!-- home router -->
+      <rect class="box" x="360" y="20" width="240" height="56" rx="8"/>
+      <text class="title" x="480" y="44" text-anchor="middle">自宅ルーター</text>
+      <text class="mono" x="480" y="64" text-anchor="middle">192.168.0.1</text>
+      <line class="l-lan" x1="480" y1="76" x2="480" y2="112"/>
+
+      <!-- home LAN bus -->
+      <line class="l-lan" x1="90" y1="112" x2="870" y2="112"/>
+      <text class="small" x="90" y="102">自宅 LAN 192.168.0.0/24（VLAN なし）</text>
+      <text class="small" x="870" y="102" text-anchor="end">10.10.10.x / 10.10.11.x 宛は 192.168.0.100 へ</text>
+
+      <!-- Windows PC -->
+      <line class="l-lan" x1="170" y1="112" x2="170" y2="146"/>
+      <rect class="box" x="90" y="146" width="160" height="52" rx="8"/>
+      <text class="title" x="170" y="168" text-anchor="middle">Windows PC</text>
+      <text class="mono" x="170" y="187" text-anchor="middle">192.168.0.22</text>
+
+      <!-- RHEL -->
+      <line class="l-lan" x1="790" y1="112" x2="790" y2="146"/>
+      <rect class="box" x="700" y="146" width="180" height="68" rx="8"/>
+      <text class="title" x="790" y="168" text-anchor="middle">RHEL k8s</text>
+      <text class="mono" x="790" y="187" text-anchor="middle">192.168.0.200</text>
+      <text class="small" x="790" y="204" text-anchor="middle">iSCSI イニシエーター</text>
+
+      <!-- Kobe -->
+      <line class="l-lan" x1="480" y1="112" x2="480" y2="176"/>
+      <rect class="box-strong" x="290" y="176" width="380" height="166" rx="10"/>
+      <rect class="port" x="473" y="171" width="14" height="10" rx="2"/>
+      <text class="mono" x="494" y="195">Gi0/4 192.168.0.100（routed）</text>
+      <text class="title" x="306" y="212">Cisco C841M "Kobe"</text>
+      <text class="small" x="306" y="230">VLAN 間ルーティング（SVI）</text>
+      <rect class="svi1" x="306" y="244" width="150" height="48" rx="6"/>
+      <text class="t1 mono" x="381" y="264" text-anchor="middle">interface Vlan1</text>
+      <text class="mono" x="381" y="282" text-anchor="middle">10.10.10.1/24</text>
+      <rect class="svi10" x="504" y="244" width="150" height="48" rx="6"/>
+      <text class="t10 mono" x="579" y="264" text-anchor="middle">interface Vlan10</text>
+      <text class="mono" x="579" y="282" text-anchor="middle">10.10.11.1/24</text>
+      <path class="l-lan" d="M458 268 H502" stroke-width="1.5"/>
+      <path d="M496 264 L502 268 L496 272" fill="none" stroke="#7d8a96" stroke-width="1.5"/>
+      <path d="M464 264 L458 268 L464 272" fill="none" stroke="#7d8a96" stroke-width="1.5"/>
+      <text class="small" x="306" y="320">DHCP ccp-pool: 10.10.10.0/25 を配布</text>
+      <!-- Kobe ports -->
+      <rect class="port" x="373" y="337" width="14" height="10" rx="2"/>
+      <rect class="port" x="573" y="337" width="14" height="10" rx="2"/>
+
+      <!-- Gi0/0 -> Pi (access VLAN1) -->
+      <line class="l1" x1="380" y1="347" x2="380" y2="420"/>
+      <text class="mono" x="388" y="370">Gi0/0</text>
+      <text class="t1 small" x="388" y="386">access VLAN 1</text>
+      <rect class="box" x="290" y="420" width="180" height="68" rx="8"/>
+      <text class="title" x="380" y="442" text-anchor="middle">Raspberry Pi 3B+</text>
+      <text class="mono" x="380" y="461" text-anchor="middle">10.10.10.53（固定）</text>
+      <text class="t1 small" x="380" y="478" text-anchor="middle">VLAN 1</text>
+
+      <!-- Gi0/1 -> CBS250 GE1 (trunk) -->
+      <line class="l1" x1="574" y1="347" x2="574" y2="420"/>
+      <line class="l10" x1="586" y1="347" x2="586" y2="420"/>
+      <text class="mono" x="596" y="370">Gi0/1 ⇄ GE1</text>
+      <text class="small" x="596" y="386">802.1Q トランク（native VLAN 1）</text>
+
+      <!-- CBS250 -->
+      <rect class="box-strong" x="500" y="420" width="380" height="96" rx="10"/>
+      <rect class="port" x="573" y="415" width="14" height="10" rx="2"/>
+      <text class="title" x="516" y="446">Cisco CBS250-8T-D</text>
+      <text class="mono small" x="516" y="466">mgmt 10.10.10.3（VLAN 1, DHCP）</text>
+      <text class="small" x="516" y="486">GE1・GE2: トランク（VLAN 1 untagged + VLAN 10 tagged）</text>
+      <text class="small" x="516" y="504">GE3〜GE8: VLAN 1 アクセス（未使用）</text>
+      <rect class="port" x="673" y="511" width="14" height="10" rx="2"/>
+
+      <!-- GE2 -> Zadara (trunk) -->
+      <line class="l1" x1="674" y1="521" x2="674" y2="572"/>
+      <line class="l10" x1="686" y1="521" x2="686" y2="572"/>
+      <text class="mono" x="696" y="544">GE2 ⇄ enp2s0</text>
+      <text class="small" x="696" y="560">トランク</text>
+
+      <!-- Zadara -->
+      <rect class="box-strong" x="440" y="572" width="440" height="118" rx="10"/>
+      <text class="title" x="456" y="596">Zadara（Ubuntu 24.04 · DevStack）</text>
+      <rect class="svi1" x="456" y="608" width="196" height="70" rx="6"/>
+      <text class="t1 mono" x="468" y="627">enp2s0（untagged）</text>
+      <text class="mono" x="468" y="645">10.10.10.4/25（DHCP）</text>
+      <text class="small" x="468" y="663">デフォルトルート → 10.10.10.1</text>
+      <rect class="svi10" x="668" y="608" width="196" height="70" rx="6"/>
+      <text class="t10 mono" x="680" y="627">enp2s0.10（VLAN 10）</text>
+      <text class="mono" x="680" y="645">10.10.11.6/24（固定）</text>
+      <text class="small" x="680" y="663">Horizon · API · iSCSI :3260</text>
+
+      <!-- OpenStack external net -->
+      <rect class="ext" x="250" y="616" width="170" height="54" rx="6"/>
+      <text class="text-ext mono" x="335" y="637" text-anchor="middle">br-ex 172.24.4.1/24</text>
+      <text class="small" x="335" y="656" text-anchor="middle">Floating IP（Zadara 内だけ）</text>
+      <line class="ext" x1="420" y1="643" x2="456" y2="643"/>
+
+      <!-- legend -->
+      <g transform="translate(40 540)">
+        <text class="small" x="0" y="0">凡例</text>
+        <line class="l1" x1="0" y1="18" x2="40" y2="18"/><text class="small" x="50" y="22">VLAN 1（タグなし）</text>
+        <line class="l10" x1="0" y1="40" x2="40" y2="40"/><text class="small" x="50" y="44">VLAN 10（802.1Q タグ付き）</text>
+        <line class="l-lan" x1="0" y1="62" x2="40" y2="62"/><text class="small" x="50" y="66">自宅 LAN（VLAN なし）</text>
+      </g>
+    </svg>
