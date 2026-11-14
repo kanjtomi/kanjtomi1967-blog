@@ -352,7 +352,13 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
     exhaustion / OOM kill, and query verification with `EXPLAIN`. Manifests and
     the walkthrough are in `db-perf-lab/` (`kubectl apply -k db-perf-lab`); a
     copy is kept at `/root/db-perf-lab` on the host
-  - `s3-pv-lab` — S3-backed PersistentVolume lab (`s3-pv-lab/`)
+  - ~~`s3-pv-lab`~~ — S3-backed PersistentVolume lab (`s3-pv-lab/`),
+    **fully torn down 2026-11-14** (namespace, PV/PVC, Mountpoint-S3 CSI
+    driver + `aws-secret`, bucket `kanjtomi1967-k8s-s3-pv-lab`, IAM user
+    `k8s-s3-pv-lab`). Reason: its demo pod's `ls -la` loop over the S3 mount
+    re-listed ~98,500 objects every 30 s and ran S3 to ~$100/month
+    (internet data transfer + LIST requests). Never leave a pod looping over
+    an S3 mount; see `s3-pv-lab/README.md`
   - `security-lab` — DVWA + MariaDB security-testing lab (`security-lab/`)
   - `monitoring` — Prometheus + Grafana (`monitoring/`), see below
   - `bgp-lab` — FRR for the BGP lab (`bgp-lab/`), see below
@@ -454,6 +460,20 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   saved to startup-config (2026-10-14). The Cisco also carries older AWS Site-to-Site VPN
   config (`Tunnel1`, IKEv2 to 52.194.74.44, plus IKEv1 keyrings/profiles and
   `crypto isakmp policy 200`); leave it alone. Lessons in `ipsec-lab/README.md`.
+- **AWS VPN lab (`aws-vpn-lab/`, added 2026-11-14)**: Ubuntu 24.04 `t4g.nano`
+  EC2 (`ap-northeast-1`, own VPC 10.20.0.0/16, private 10.20.1.10, Elastic IP
+  18.179.189.78, Terraform in `aws-vpn-lab/terraform`, local state) running
+  strongSwan, IKEv2 route-based VPN to the Cisco `Tunnel20` (169.254.201.1/30,
+  `AWSLAB-*` IKEv2/IPsec objects, route 10.20.0.0/16; saved to
+  startup-config). Reaches 10.10.10.0/24 and 10.10.11.0/24 only. The Cisco
+  initiates (NAT-T, no home-router port forward); the EC2 only responds. Turn
+  the instance on/off from the Windows PC with
+  `aws-vpn-lab\scripts\vm.ps1 start|stop|status|ssh` (the tunnel comes back
+  by itself after a start). EventBridge Scheduler `aws-vpn-lab-auto-stop`
+  stops it every night at 23:00 Asia/Tokyo (no auto-start). PSK only in `aws-vpn-lab/secrets/psk.txt`
+  (gitignored) and on the Cisco; the user typed it there. The security group
+  only allows the home public IP — if it changes, update `home_cidr` in
+  `terraform.tfvars` and re-apply. Details in `aws-vpn-lab/README.md`.
 - **Sleep disabled (2026-10-11)**: the host used to auto-suspend through the
   GNOME/GDM idle policy, which took the whole cluster offline. `sleep`,
   `suspend`, `hibernate` and `hybrid-sleep` targets are now masked. While the
@@ -496,6 +516,18 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   `/root/servicenow-51-memory.properties.bak-*`; `conf/orbit-java-opts.conf`
   is generated from it — don't edit that one). Startup to warm (~7 min) and
   `login.do` (~120 ms p50) were unchanged by the heap increase.
+  `-Xmn512m` was added to the same line on 2026-11-08 (ServiceNow's `-Xms128m`
+  kept the young gen at 128 MB, so ParNew ran ~1.5x/s under load and stopped
+  all threads ~8% of the time) — but with `-Xms128m` still in place the JVM
+  only raised the young gen's *max* to 512 MB and kept it at 128 MB
+  (`jstat -gccapacity` NGC), so it had no effect; `-Xms` must be raised too. A JFR profile of 16-client `login.do` load
+  showed java CPU-bound at ~12 of 20 hardware threads, spread over
+  ServiceNow's own rendering (Jelly, Rhino JS, XML, map lookups) — no single
+  hotspot; background scheduler jobs took ~19% of samples. Profiling caveats:
+  the security manager only lets the JVM write under its allowed paths
+  (`java.io.tmpdir` = `/glide/nodes/tokyo/tmp`, wiped on startup), and a
+  `JFR.start` triggered a ~3 min JIT recompile storm (~1,100% CPU) — wait for
+  `jcmd <pid> Compiler.queue` to drain before measuring.
   - **History — why it moved**: `/glide` used to be a Samsung Portable SSD T5
     over USB (ext4, UUID `cb3fe9ae-…`). On 2026-11-07 it was moved from a
     USB 2.0-only port to a USB 3 port, then kept disconnecting
