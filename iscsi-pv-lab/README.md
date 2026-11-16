@@ -63,9 +63,58 @@ sudo targetcli sessions                   # alias: redhat.kanjhome.local ... LOG
 - **Pod → ホストの firewalld は関係ない**: iSCSI のログインとマウントは kubelet がホスト側で行うので、
   Pod からホストへの通信が拒否される件 (CLAUDE.md 参照) には当たらない。
 
+## 性能の練習
+
+`bench/` の `iscsi-bench` Pod (イメージは `linux-tuning-lab` の `localhost/tuning-tools:local`) が
+同じ PVC を `/data` にマウントする。1 ノードなので RWO でも demo Pod と同時に使える。
+
+```bash
+kubectl apply -k iscsi-pv-lab/bench
+MSYS_NO_PATHCONV=1 kubectl -n iscsi-pv-lab exec iscsi-bench -- /bench/06-iscsi.sh 10 512M
+```
+
+経路 (`ip route get`、`tracepath` のパス MTU)、ping の RTT、fio 4 種類を iSCSI (`/data`) と
+ローカル NVMe (`/scratch`) で出す。作業ファイルは `/data/fio-bench` にだけ作って消す。
+
+2026-11-15 の結果:
+
+| テスト | iSCSI (Zadara) | ローカル NVMe |
+|---|---|---|
+| 順次読み込み 1M qd8 | **11.2 MB/s** (p50 709 ms) | 3,210 MB/s |
+| ランダム読み込み 4k qd1 | 782 IOPS (p50 1.2 ms) | 10,896 IOPS (84 us) |
+| ランダム読み込み 4k qd32 | 2,775 IOPS (p50 11.5 ms) | 112,895 IOPS |
+| ランダム書き込み 4k + fsync | 104 IOPS | 162 IOPS |
+
+ネットワーク: ping RTT 1.6 ms、パス MTU 1480 (Pod の Calico `eth0`)、4 ホップ
+(Pod → ホスト → 自宅ルーター → Cisco 192.168.0.100 → Zadara)。
+
+**未解決の宿題**: 順次読み込みが 11 MB/s (≒ 90 Mbps) で頭打ち。RHEL `enp3s0` も Zadara `enp2s0` も
+1000Mb/s 全二重なので、NIC ではない。4k qd1 の遅延 (1.2 ms) は RTT とほぼ同じなので、
+1 件ごとの往復は正常。帯域だけが 100Mbps 級に絞られている。調べる候補:
+
+1. 経路上のどこかのリンクが 100Mbps でリンクアップしていないか (自宅ルーター、Cisco Gi0/4、CBS250)
+   — Cisco で `show interfaces Gi0/4 | include duplex|rate`
+2. Cisco C841M がソフトウェアで転送していて CPU が律速していないか — 転送中に `show processes cpu sorted`
+3. ホスト側から直接 (Pod を通さず) でも同じか — RHEL で `dd if=/dev/sdc of=/dev/null bs=1M count=200 iflag=direct`
+4. iperf3 で TCP だけの帯域を測る (Zadara 側で `iperf3 -s`)
+
+ホスト側 (イニシエーター) で見るもの:
+
+```bash
+iscsiadm -m session -P 3               # セッションの状態、MaxRecvDataSegmentLength (262144)、タイムアウト
+cat /sys/block/sdc/device/queue_depth  # 32 (LUN ごとのキュー深度)
+cat /sys/block/sdc/queue/scheduler     # [mq-deadline]
+iostat -x sdc 1                        # r_await / aqu-sz
+multipath -ll                          # マルチパスは未設定 (パスは 1 本、ポータルも 1 つ)
+```
+
+ターゲット側 (Zadara) で見るもの: `sudo targetcli sessions`、`iostat -x dm-* 1` (LV の負荷)、
+`/sys/kernel/config/target/iscsi/<iqn>/tpgt_1/param/` (ネゴシエーションの値)。
+
 ## 片付け
 
 ```bash
+kubectl delete -k iscsi-pv-lab/bench                     # 性能練習用の Pod
 kubectl delete -f iscsi-pv-lab/k8s/iscsi-pv-lab.yaml    # kubelet がログアウトする
 # Zadara
 sudo targetcli /iscsi delete iqn.2026-11.local.kanjhome.zadara:k8s-pv1

@@ -1,0 +1,35 @@
+# iSCSI LUN の性能を測る作業 Pod。iscsi-pv-lab-pvc を demo Pod と共有する
+# (1 ノードのクラスタなので RWO でも同じノードの 2 つの Pod から同時にマウントできる)。
+# イメージは linux-tuning-lab の localhost/tuning-tools:local (fio, iostat など入り)。
+apiVersion: v1
+kind: Pod
+metadata:
+  name: iscsi-bench
+  namespace: iscsi-pv-lab
+spec:
+  containers:
+    - name: tools
+      image: localhost/tuning-tools:local
+      imagePullPolicy: Never
+      command: ["sleep", "infinity"]
+      resources:
+        requests: { cpu: 200m, memory: 128Mi }
+        limits: { cpu: "1", memory: 512Mi }
+      volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: scratch
+          mountPath: /scratch
+        - name: bench
+          mountPath: /bench
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: iscsi-pv-lab-pvc
+    - name: scratch            # 比較用のローカル NVMe (/glide)
+      emptyDir:
+        sizeLimit: 2Gi
+    - name: bench
+      configMap:
+        name: iscsi-bench
+        defaultMode: 0755

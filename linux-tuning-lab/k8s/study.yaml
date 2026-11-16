@@ -1,0 +1,50 @@
+# 性能の見方を練習する勉強用コンテナ。`lesson` コマンド (/study/lesson.sh) でレッスンを進める。
+#   kubectl -n tuning-lab exec -it deploy/study -- bash
+#   lesson          # 一覧
+#   lesson 1        # 問題を起こす → 考える → Enter で実測値と解説
+# bench より上限を小さくしてある (CPU 1 / メモリ 512Mi) ので、短い負荷でも飽和が見える。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: study
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: study
+  template:
+    metadata:
+      labels:
+        app: study
+    spec:
+      securityContext:
+        sysctls:
+          - name: net.ipv4.ip_local_port_range   # レッスン 7 (ポート枯渇) のためにわざと 1000 個
+            value: "61000 61999"
+      containers:
+        - name: study
+          image: localhost/tuning-tools:local
+          imagePullPolicy: Never
+          # PID 1 を bash にして、親が先に終わった負荷のプロセス (zombie) を回収させる (sleep は回収しない)
+          command: ["bash", "-c", "ln -sf /study/lesson.sh /usr/local/bin/lesson; trap exit TERM; while :; do sleep 3600 & wait; done"]
+          securityContext:
+            capabilities:
+              add: ["SYS_PTRACE"]
+          resources:
+            requests: { cpu: 200m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          volumeMounts:
+            - name: scratch
+              mountPath: /scratch
+            - name: study
+              mountPath: /study
+      volumes:
+        - name: scratch            # /glide (内蔵 NVMe)。MariaDB / ServiceNow と共有
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: study
+          configMap:
+            name: tuning-study
+            defaultMode: 0755

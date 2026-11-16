@@ -378,9 +378,28 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   - `tuning-lab` — Linux tuning practice lab (`linux-tuning-lab/`, `kubectl
     apply -k linux-tuning-lab` after building `localhost/tuning-tools:local`
     on the host with `build-image.sh`): CPU throttling, page-cache thrash /
-    OOM, fio disk I/O, and ephemeral-port exhaustion scenarios. Unprivileged,
+    OOM, fio disk I/O, ephemeral-port exhaustion, fsync/D-state load
+    (`05-iowait-load.sh`), and a random "guess the cause" drill
+    (`mystery.sh start|answer|stop`, added 2026-11-15), plus a `study`
+    Deployment (CPU 1 / 512Mi) with seven guided lessons on reading
+    performance metrics (`kubectl -n tuning-lab exec -it deploy/study -- bash`,
+    then `lesson 1`..`7`; lesson 5 OOM-kills the container on purpose). An `iscsi-bench` pod
+    (`iscsi-pv-lab/bench`, `kubectl apply -k`) benchmarks the Zadara iSCSI LUN
+    against local NVMe; sequential reads cap at ~11 MB/s although both NICs
+    are 1 Gb/s — cause not yet found (see `iscsi-pv-lab/README.md`). Unprivileged,
     every pod has limits (the host is shared with MariaDB / ServiceNow /
     Oracle). Details in `linux-tuning-lab/README.md`
+  - `cost-monitor` — AWS cost monitor (`cost-monitor/`, added 2026-11-16):
+    stdlib-only Python that calls Cost Explorer (hand-rolled SigV4, no boto3)
+    once every 24 h — **each request costs $0.01** (2 per fetch, ~$0.6/month;
+    a pod restart fetches once more), so never shorten the interval casually.
+    Dashboard on NodePort `http://192.168.0.200:30480/`, `/metrics` scraped by
+    Prometheus via ServiceMonitor. Read-only IAM user `k8s-cost-monitor`
+    (`ce:GetCostAndUsage` / `ce:GetCostForecast`, Terraform in
+    `cost-monitor/terraform`, local gitignored state that holds the key); the
+    key is only in Secret `aws-cost-monitor-creds`. Budget alert uses the last
+    day's pace, not AWS's forecast (which lags a stopped spike). Details in
+    `cost-monitor/README.md`
   - `mount-s3` — not managed from this repo
 - **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
   2026-10-03 so metrics-server can verify the kubelet over TLS without
