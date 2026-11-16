@@ -1,0 +1,12 @@
+# kubectl apply -k iscsi-pv-lab/bench   (先に iscsi-pv-lab/k8s/iscsi-pv-lab.yaml を apply しておく)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: iscsi-pv-lab
+resources:
+  - iscsi-bench.yaml
+configMapGenerator:
+  - name: iscsi-bench
+    files:
+      - 06-iscsi.sh
+generatorOptions:
+  disableNameSuffixHash: true

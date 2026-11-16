@@ -8,6 +8,7 @@ resources:
   - k8s/namespace.yaml
   - k8s/bench.yaml
   - k8s/web.yaml
+  - k8s/study.yaml
 
 configMapGenerator:
   - name: tuning-scenarios
@@ -17,7 +18,13 @@ configMapGenerator:
       - scenarios/02-memory.sh
       - scenarios/03-disk-io.sh
       - scenarios/04-network.sh
+      - scenarios/05-iowait-load.sh
+      - scenarios/mystery.sh
+      - scenarios/app.py
       - scenarios/client-close.py
+  - name: tuning-study
+    files:
+      - study/lesson.sh
   - name: web-nginx
     files:
       - nginx/nginx.conf

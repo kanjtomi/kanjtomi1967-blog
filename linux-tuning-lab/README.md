@@ -10,6 +10,7 @@ CPU / メモリ / ディスク I/O / ネットワークのチューニングを�
 | `bench` (Deployment) | 作業用 Pod。`localhost/tuning-tools:local` (Fedora 42 + sysstat, stress-ng, fio, sysbench, strace, htop, numactl, ab, iperf3 など)。上限 CPU 2 / メモリ 1Gi、作業場所 `/scratch` (emptyDir 4Gi) |
 | `web` (Deployment + Service) | ネットワーク練習の相手の nginx 1.28.0。上限 CPU 1 / メモリ 128Mi。設定は `nginx/nginx.conf` |
 | `scenarios/` | 練習シナリオ。ConfigMap `tuning-scenarios` として `/scenarios` にマウントされる |
+| `study` (Deployment) | 性能の見方を 1 つずつ学ぶ勉強用 Pod。同じイメージ、上限 CPU 1 / メモリ 512Mi、ポート範囲 1000 個。`lesson` コマンド (`study/lesson.sh`、ConfigMap `tuning-study`) |
 
 ### 安全のための決まり
 
@@ -39,6 +40,29 @@ kubectl -n tuning-lab exec -it deploy/bench -- bash
 Windows の Git Bash から `kubectl exec ... -- /scenarios/...` と打つと、`/scenarios` が
 `C:/Program Files/Git/scenarios` に書き換えられて失敗する。`MSYS_NO_PATHCONV=1 kubectl ...` にするか、
 `exec -it ... -- bash` で中に入ってから実行する。
+
+## 勉強用コンテナ (study) — 性能の見方レッスン
+
+```bash
+kubectl -n tuning-lab exec -it deploy/study -- bash
+lesson        # 一覧
+lesson 1      # 負荷を起こす → 問題が出る → (別の端末で調べる) → Enter で実測値と解説 → 自動で片付け
+```
+
+各レッスンは USE (使用率・飽和・エラー) のどれを、どのコマンドで見るかを 1 つずつ扱う。
+`-it` なしで実行すると問題のところで待たずに進む (`WAIT=秒` で待ち時間を変えられる)。
+
+| # | テーマ | 2026-11-15 の実測 |
+|---|---|---|
+| 1 | load が高い = CPU 不足? | load 3.3、D 状態 8 個、Pod の CPU 0.04 コア。vmstat の b 列は 0 (ジャーナル待ちは数えられない) |
+| 2 | CPU の飽和とスロットリング | ホストは 89% 空き、3 プロセスとも %usr 33 / **%wait 67**、50 周期中 50 周期スロットリング |
+| 3 | 平均は正常でも p99 が悪い | バッチと同居で p50 8→7 ms (変わらず)、**平均 8.9→22 ms、p99 18→80 ms** |
+| 4 | コンテナのメモリはどこを見る? | `free` はホストの 93GB を表示。300MB は 2 回目 0.25→0.06 秒、700MB は 2 回目も速くならず refault 17.9 万 |
+| 5 | OOMKilled | 700MB 確保で exec が exit 137、RESTARTS 1、`lastState.terminated.reason: OOMKilled` |
+| 6 | %util は限界を表す? | qd1: 11.5k r/s・%util 90%、qd32: **116k r/s・%util 85%** (aqu-sz 0.9 → 10) |
+| 7 | 余っているのに接続できない | keep-alive は 3000/3000 成功、毎回 close は 996 成功 / 2004 失敗 (EADDRNOTAVAIL)、TIME_WAIT 1000 |
+
+レッスン 5 はコンテナを再起動させるので最後にやる。総合問題は bench Pod の `/scenarios/mystery.sh`。
 
 ## シナリオ
 
@@ -137,6 +161,52 @@ bs を 4k / 64k / 1M で比較、別の端末で `iostat -x 1`。
 
 `net.core.somaxconn` や `net.ipv4.tcp_tw_reuse` は namespaced だが k8s では "unsafe" sysctl 扱いで、
 kubelet の `allowedUnsafeSysctls` を変えないと Pod から設定できない (クラスタ設定の変更になるので未対応)。
+
+### 05 I/O 待ちで load average が上がる (fsync)
+
+```bash
+/scenarios/05-iowait-load.sh 16 60    # 4k 書き込み + 毎回 fdatasync のプロセス 16 個、60 秒
+```
+
+5 秒ごとに load average・D 状態のプロセス数・Pod の CPU 使用量・ディスクの w/s / wkB/s / w_await / %util
+(`/proc/diskstats` から iostat -x と同じ計算) を出す。load average はホスト全体の値。
+
+2026-11-15 の結果 (16 プロセス、20 秒): load1 0.38 → 5.02 (1 分平均なので 60 秒続ければもっと上がる)、
+D 状態 16、**Pod の CPU 0.1 コア**。ディスクは w/s ~1,800・**wkB/s ~7MB/s で %util 99%**、w_await 2.7 ms。
+fio から見ると 800 書き込み/s、fdatasync 1 回 p50 20 ms。fdatasync はアプリの 1 書き込みに対して
+ジャーナル込みで 2 回強のデバイス書き込みになる。
+
+読み方: load average は「実行中 + 実行待ち + D 状態 (主に I/O 待ち)」の数なので、CPU が暇でも上がる。
+帯域は小さいのに %util が 100% 近いのは、1 件ずつ flush の完了を待っているから。**NVMe の %util は
+「何か 1 件でも処理中だった時間の割合」で、並列に処理できる余力は表さない**ので、限界かどうかは
+w_await と、並列を増やしたときに w/s が伸びるかで判断する。
+
+### 原因当て (mystery)
+
+5 種類の問題からランダムに 1 つを裏で起こし、何が起きているかを当てる練習。
+
+```bash
+/scenarios/mystery.sh start 10   # 10 分で自動停止
+#   ... uptime / top / vmstat 1 / pidstat -u -d -r 1 / iostat -x 1 / ss -s / /tmp/app.log / observe.sh 2
+/scenarios/mystery.sh answer     # 正解と、見るべきだった指標
+/scenarios/mystery.sh stop
+```
+
+| 問題 | 中身 | 決め手になる指標 (2026-11-15 に確認) |
+|---|---|---|
+| cpu | busy loop 4 プロセス (上限 2 コア) | python3 4 つが各 50% で頭打ち、`nr_throttled` が増える |
+| fsync | 4k + fdatasync を 12 プロセス | load ~7、D 状態 12、iostat の %util 高・帯域小 |
+| cache | 1200MB を繰り返し読む | 毎回 1.2 秒で速くならない、`workingset_refault_file` 増加 |
+| memory | anon 850MB + 300MB を繰り返し読む | `memory.current` が上限に張り付く、anon 900MB / file 160MB、refault 増加、OOM はなし |
+| ports | 毎回接続してクライアントから close | TIME_WAIT 1000、ログに `Cannot assign requested address` |
+
+アプリは全部 `python3 /scenarios/app.py` (中身は環境変数 `MODE`) なので、ps の見た目では区別できない。
+`/tmp/.mystery` に答えが入っているが、それは見ない約束。
+
+### iSCSI の性能 (Zadara の LUN)
+
+`iscsi-pv-lab/bench` の `iscsi-bench` Pod で、iSCSI の LUN とローカル NVMe を同じ fio で比べる。
+手順と結果は [`../iscsi-pv-lab/README.md`](../iscsi-pv-lab/README.md) の「性能の練習」。
 
 ## 片付け
 

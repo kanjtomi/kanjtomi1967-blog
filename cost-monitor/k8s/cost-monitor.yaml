@@ -1,0 +1,98 @@
+# AWS cost monitor on the home RHEL cluster. The access key lives only in the
+# Secret aws-cost-monitor-creds, created from Terraform output (see README) - never in this repo.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cost-monitor
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cost-monitor-config
+  namespace: cost-monitor
+data:
+  FETCH_INTERVAL_HOURS: "24"     # Cost Explorer: $0.01 per request, 2 requests per fetch
+  MONTHLY_BUDGET_USD: "10"       # alert when this month's forecast goes above this
+  DAILY_ALERT_USD: "1.0"         # a service is flagged at >= this per day and >= SPIKE_RATIO x its 7-day median
+  SPIKE_RATIO: "2.0"
+  SHOW_DAYS: "14"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cost-monitor
+  namespace: cost-monitor
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate               # never two pods fetching (each fetch costs money)
+  selector:
+    matchLabels:
+      app: cost-monitor
+  template:
+    metadata:
+      labels:
+        app: cost-monitor
+    spec:
+      containers:
+        - name: cost-monitor
+          image: localhost/cost-monitor:local
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: cost-monitor-config
+            - secretRef:
+                name: aws-cost-monitor-creds   # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 96Mi }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+# NodePort so the dashboard opens from the LAN (30000-32767 is already open in firewalld's lan zone).
+apiVersion: v1
+kind: Service
+metadata:
+  name: cost-monitor
+  namespace: cost-monitor
+  labels:
+    app: cost-monitor
+spec:
+  type: NodePort
+  selector:
+    app: cost-monitor
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 30480
+---
+# kube-prometheus-stack picks up ServiceMonitors from every namespace (monitoring/values.yaml).
+# Scraping /metrics is free: it only reads what the last fetch stored.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cost-monitor
+  namespace: cost-monitor
+spec:
+  selector:
+    matchLabels:
+      app: cost-monitor
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 5m
