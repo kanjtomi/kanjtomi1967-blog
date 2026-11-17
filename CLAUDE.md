@@ -407,7 +407,6 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging â€
     key is only in Secret `aws-cost-monitor-creds`. Budget alert uses the last
     day's pace, not AWS's forecast (which lags a stopped spike). Details in
     `cost-monitor/README.md`
-  - `mount-s3` â€” not managed from this repo
 - **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
   2026-10-03 so metrics-server can verify the kubelet over TLS without
   `--kubelet-insecure-tls`). The cert is signed by the cluster CA and expires
