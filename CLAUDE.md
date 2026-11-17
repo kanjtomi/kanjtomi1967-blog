@@ -383,10 +383,17 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
     (`mystery.sh start|answer|stop`, added 2026-11-15), plus a `study`
     Deployment (CPU 1 / 512Mi) with seven guided lessons on reading
     performance metrics (`kubectl -n tuning-lab exec -it deploy/study -- bash`,
-    then `lesson 1`..`7`; lesson 5 OOM-kills the container on purpose). An `iscsi-bench` pod
+    then `lesson 1`..`7`; lesson 5 OOM-kills the container on purpose) and
+    five break-and-fix troubleshooting drills against a toy service `myapp`
+    (`trouble start 1`..`5` / `hint` / `check` / `answer` / `reset`: port in
+    use, deleted-but-open file filling a 64Mi tmpfs `/data`, broken
+    `/etc/resolv.conf`, permissions after switching to uid 1000, fd leak),
+    and `drill` (guess which of five loads is running from vmstat / iostat
+    output alone). An `iscsi-bench` pod
     (`iscsi-pv-lab/bench`, `kubectl apply -k`) benchmarks the Zadara iSCSI LUN
-    against local NVMe; sequential reads cap at ~11 MB/s although both NICs
-    are 1 Gb/s — cause not yet found (see `iscsi-pv-lab/README.md`). Unprivileged,
+    against local NVMe; sequential reads used to cap at ~11 MB/s because the
+    Cisco's Gi0/4 (LAN side) had linked up at 100 Mb/s — fixed 2026-11-17 by a
+    cable swap, now ~111 MB/s (1 GbE line rate; see `iscsi-pv-lab/README.md`). Unprivileged,
     every pod has limits (the host is shared with MariaDB / ServiceNow /
     Oracle). Details in `linux-tuning-lab/README.md`
   - `cost-monitor` — AWS cost monitor (`cost-monitor/`, added 2026-11-16):
@@ -400,7 +407,6 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
     key is only in Secret `aws-cost-monitor-creds`. Budget alert uses the last
     day's pace, not AWS's forecast (which lags a stopped spike). Details in
     `cost-monitor/README.md`
-  - `mount-s3` — not managed from this repo
 - **kubelet serving certificate**: `serverTLSBootstrap: true` is enabled (set
   2026-10-03 so metrics-server can verify the kubelet over TLS without
   `--kubelet-insecure-tls`). The cert is signed by the cluster CA and expires
