@@ -64,6 +64,48 @@ lesson 1      # 負荷を起こす → 問題が出る → (別の端末で調�
 
 レッスン 5 はコンテナを再起動させるので最後にやる。総合問題は bench Pod の `/scenarios/mystery.sh`。
 
+## vmstat / iostat を読む練習 (drill)
+
+study Pod で `drill` と打つと、5 種類の負荷 (CPU / fsync / 順次読み / 順次書き / 4k ランダム読み) の
+どれか 1 つを裏で起こし、負荷前と負荷中の `vmstat` と `iostat -dx` だけを見せる。A〜E から当てると、
+決め手になった列を解説する。`drill vmstat` / `drill iostat` で片方だけ、`drill fsync` などで種類を指定。
+
+2026-11-16 の実測 (負荷中、nvme0n1):
+
+| 負荷 | vmstat の決め手 | iostat の決め手 |
+|---|---|---|
+| CPU (stress-ng、上限 1 コア) | us +5〜10%、r が増える、bi/bo 変わらず | 変化なし |
+| 4k + fdatasync × 6 | b 2、wa 4%、bo 5.6MB/s | w/s 1,282・wkB/s 5,878 → **wareq-sz 4.6k**、**f/s 547**、%util 96% |
+| 順次読み 300MB/s | **bi 307,200** | r/s 600・rareq-sz 512・r_await 0.47ms・%util 17% |
+| 順次書き 300MB/s | **bo 307,300** | w/s 616・wareq-sz 499・%util 11% |
+| 4k ランダム読み 30k IOPS | bi 120,000、in/cs が大きく増える | **r/s 30,001・rareq-sz 4**・aqu-sz 2.7・%util 63% |
+
+## トラブルシューティング練習 (trouble)
+
+同じ study Pod で、「動かない」「エラーが出る」系の障害を起こして直す練習。対象は小さな Web サービス
+`myapp` (`study/myapp.py`、`myapp start|stop|status|log`)。`/health` は「設定を読む → `/data/myapp` に
+書く → web Service を名前で呼ぶ」をするので、どこが壊れても 500 か起動失敗になる。
+
+```bash
+kubectl -n tuning-lab exec -it deploy/study -- bash
+trouble start 1      # 障害を起こす。チケット (顧客の申告) が出る
+trouble hint         # 打つたびにヒントが 1 段ずつ増える
+trouble check        # 直ったか判定 (/health が 200 か、など)
+trouble answer       # 原因・調べ方・直し方・再発防止
+trouble reset        # 全部元に戻す
+```
+
+| # | チケット | 原因 | 決め手 |
+|---|---|---|---|
+| 1 | 再起動したら上がらない | 残っていた `python3 -m http.server` が 8080 を使用 | ログの `Address already in use` → `ss -ltnp` |
+| 2 | ディスク一杯なのにファイルが見つからない | 削除済みだが開かれたままのファイル (64Mi の tmpfs `/data`) | `df` 100% / `du` 0 → `ls -l /proc/*/fd \| grep deleted` |
+| 3 | 相手は動いているのにつながらない | `/etc/resolv.conf` の nameserver が 192.0.2.53 | `getent hosts` 失敗 → `/etc/resolv.conf`。`sed -i` は bind mount なので失敗する (上書きで直す) |
+| 4 | uid 1000 にしたら起動しない | 設定ファイル 600 と、データディレクトリ 755 root の **2 段階** | `Permission denied` → `ls -l`。1 つ直したらもう一度試す |
+| 5 | しばらくするとエラーしか返さない | fd リーク + 上限 64 | `Too many open files` → `/proc/<PID>/limits` と `ls /proc/<PID>/fd \| wc -l` → `prlimit` |
+
+2026-11-16 に 5 つとも「壊す → ヒントどおりに直す → `trouble check` が ✓」まで確認済み。
+答えと元の設定は `/tmp/.trouble` にあるが、見ない約束。
+
 ## シナリオ
 
 設定 (YAML / nginx.conf) を変えたら `kubectl apply -k linux-tuning-lab`。ConfigMap の変更が

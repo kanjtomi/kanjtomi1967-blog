@@ -28,7 +28,8 @@ spec:
           image: localhost/tuning-tools:local
           imagePullPolicy: Never
           # PID 1 を bash にして、親が先に終わった負荷のプロセス (zombie) を回収させる (sleep は回収しない)
-          command: ["bash", "-c", "ln -sf /study/lesson.sh /usr/local/bin/lesson; trap exit TERM; while :; do sleep 3600 & wait; done"]
+          # trouble / myapp はトラブルシューティング練習 (study/trouble.sh)
+          command: ["bash", "-c", "ln -sf /study/lesson.sh /usr/local/bin/lesson; ln -sf /study/trouble.sh /usr/local/bin/trouble; ln -sf /study/myapp.sh /usr/local/bin/myapp; ln -sf /study/drill.sh /usr/local/bin/drill; trap exit TERM; while :; do sleep 3600 & wait; done"]
           securityContext:
             capabilities:
               add: ["SYS_PTRACE"]
@@ -40,7 +41,13 @@ spec:
               mountPath: /scratch
             - name: study
               mountPath: /study
+            - name: data
+              mountPath: /data
       volumes:
+        - name: data               # trouble 2 (ディスク一杯) 用の 64Mi の tmpfs。一杯にしても ENOSPC で止まり、Pod は退避されない
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
         - name: scratch            # /glide (内蔵 NVMe)。MariaDB / ServiceNow と共有
           emptyDir:
             sizeLimit: 2Gi

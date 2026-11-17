@@ -25,6 +25,10 @@ configMapGenerator:
   - name: tuning-study
     files:
       - study/lesson.sh
+      - study/trouble.sh
+      - study/myapp.sh
+      - study/myapp.py
+      - study/drill.sh
   - name: web-nginx
     files:
       - nginx/nginx.conf

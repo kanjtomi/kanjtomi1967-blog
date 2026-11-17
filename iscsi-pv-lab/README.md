@@ -76,27 +76,34 @@ MSYS_NO_PATHCONV=1 kubectl -n iscsi-pv-lab exec iscsi-bench -- /bench/06-iscsi.s
 経路 (`ip route get`、`tracepath` のパス MTU)、ping の RTT、fio 4 種類を iSCSI (`/data`) と
 ローカル NVMe (`/scratch`) で出す。作業ファイルは `/data/fio-bench` にだけ作って消す。
 
-2026-11-15 の結果:
+結果 (11-15 は Cisco Gi0/4 が 100Mbps、11-17 はケーブル交換で 1Gbps になった後):
 
-| テスト | iSCSI (Zadara) | ローカル NVMe |
-|---|---|---|
-| 順次読み込み 1M qd8 | **11.2 MB/s** (p50 709 ms) | 3,210 MB/s |
-| ランダム読み込み 4k qd1 | 782 IOPS (p50 1.2 ms) | 10,896 IOPS (84 us) |
-| ランダム読み込み 4k qd32 | 2,775 IOPS (p50 11.5 ms) | 112,895 IOPS |
-| ランダム書き込み 4k + fsync | 104 IOPS | 162 IOPS |
+| テスト | iSCSI 2026-11-15 | iSCSI 2026-11-17 | ローカル NVMe |
+|---|---|---|---|
+| 順次読み込み 1M qd8 | 11.2 MB/s (p50 709 ms) | **111.5 MB/s** (p50 72 ms) | 3,193 MB/s |
+| ランダム読み込み 4k qd1 | 782 IOPS (p50 1.2 ms) | 857 IOPS (p50 1.1 ms) | 10,750 IOPS (82 us) |
+| ランダム読み込み 4k qd32 | 2,775 IOPS (p50 11.5 ms) | **22,244 IOPS** (p50 1.4 ms) | 130,540 IOPS |
+| ランダム書き込み 4k + fsync | 104 IOPS | 115 IOPS | 162 IOPS |
 
 ネットワーク: ping RTT 1.6 ms、パス MTU 1480 (Pod の Calico `eth0`)、4 ホップ
 (Pod → ホスト → 自宅ルーター → Cisco 192.168.0.100 → Zadara)。
 
-**未解決の宿題**: 順次読み込みが 11 MB/s (≒ 90 Mbps) で頭打ち。RHEL `enp3s0` も Zadara `enp2s0` も
-1000Mb/s 全二重なので、NIC ではない。4k qd1 の遅延 (1.2 ms) は RTT とほぼ同じなので、
-1 件ごとの往復は正常。帯域だけが 100Mbps 級に絞られている。調べる候補:
+**解決済み (2026-11-17): 順次読み込みが 11 MB/s で頭打ちだった原因**は、Cisco C841M の
+Gi0/4 (192.168.0.100、自宅 LAN 側) が auto 設定のまま **100Mbps でリンクアップ**していたこと
+(`show interfaces gi0/4` → `Full Duplex, 100Mbps`、lost carrier 80 回)。RHEL ↔ Zadara の通信は
+行きも帰りもこのポートを通るので、両方向とも ~94 Mbps に絞られていた。ケーブルを交換して
+1Gbps になり、順次読み込みは 1GbE の線速 (~111 MB/s) まで出るようになった。
 
-1. 経路上のどこかのリンクが 100Mbps でリンクアップしていないか (自宅ルーター、Cisco Gi0/4、CBS250)
-   — Cisco で `show interfaces Gi0/4 | include duplex|rate`
-2. Cisco C841M がソフトウェアで転送していて CPU が律速していないか — 転送中に `show processes cpu sorted`
-3. ホスト側から直接 (Pod を通さず) でも同じか — RHEL で `dd if=/dev/sdc of=/dev/null bs=1M count=200 iflag=direct`
-4. iperf3 で TCP だけの帯域を測る (Zadara 側で `iperf3 -s`)
+見つけ方の記録:
+
+- RHEL で `ss -ti dst 10.10.11.6` — `delivery_rate 97.2Mbps` (100Mbps 回線に張り付き)、
+  `minrtt 0.47 ms` に対し転送中の `rtt` が ~14 ms (ボトルネックでキューが溜まる)。TCP ウィンドウ
+  (`rcv_ssthresh` ~700 KB) は 12 ms × 11 MB/s ≒ 135 KB より十分大きく、律速ではなかった
+- Cisco コンソール (COM3) で `show interfaces status` (スイッチポート Gi0/0-3) と
+  `show interfaces gi0/4` (WAN 側のルーテッドポート、`status` には出ない) を見る
+- C841M (CPU は P1021SEC、公式の性能値は「サービス多数有効で 30 Mbps 超」だけ) の CPU は、
+  1Gbps 線速の順次読み込み中でも 5 秒平均 29% (うち割り込み 23% = CEF の高速パス)。
+  この経路では Cisco の CPU は律速にならない
 
 ホスト側 (イニシエーター) で見るもの:
 
