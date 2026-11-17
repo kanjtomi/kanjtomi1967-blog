@@ -1,0 +1,29 @@
+# Dynamic SMB volumes on Zadara (//10.10.11.6/k8s, a 20 GiB XFS LV served by
+# Samba as user k8s-smb). Each PVC gets its own sub-directory, created by the
+# csi-smb controller and removed again when the PV is deleted.
+# Credentials: Secret kube-system/smb-zadara-creds (username, password) -
+# created by hand from Zadara's /root/k8s-smb-password.txt, never committed
+# (see README). It lives in kube-system so that deleting the demo namespace
+# does not strand PVs whose deletion still needs it.
+# Not the default StorageClass - workloads must ask for it by name.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: smb-zadara
+provisioner: smb.csi.k8s.io
+parameters:
+  source: //10.10.11.6/k8s
+  subDir: ${pvc.metadata.namespace}-${pvc.metadata.name}
+  csi.storage.k8s.io/provisioner-secret-name: smb-zadara-creds
+  csi.storage.k8s.io/provisioner-secret-namespace: kube-system
+  csi.storage.k8s.io/node-stage-secret-name: smb-zadara-creds
+  csi.storage.k8s.io/node-stage-secret-namespace: kube-system
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+mountOptions:
+  - vers=3.1.1
+  - dir_mode=0777
+  - file_mode=0666
+  - mfsymlinks     # store symlinks as special files (Samba has no unix extensions over SMB3 here)
+  - noserverino    # client-generated inode numbers, avoids collisions across the share

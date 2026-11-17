@@ -1,0 +1,6 @@
+# kubectl apply -k smb-csi-lab/k8s
+# Prerequisites (see README): csi-driver-smb installed with Helm, and the
+# Secret kube-system/smb-zadara-creds created from Zadara's password file.
+resources:
+  - storageclass.yaml
+  - smb-csi-lab.yaml
