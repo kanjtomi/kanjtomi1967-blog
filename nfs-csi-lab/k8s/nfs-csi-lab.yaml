@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nfs-csi-lab
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-demo
+  namespace: nfs-csi-lab
+spec:
+  accessModes: [ReadWriteMany]   # NFS can be mounted by many pods at once
+  storageClassName: nfs-zadara
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Writes one line at start-up and then just sleeps. Deliberately no polling
+# loop over the mount (see s3-pv-lab's lesson in CLAUDE.md).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nfs-demo
+  namespace: nfs-csi-lab
+spec:
+  containers:
+    - name: demo
+      image: docker.io/library/busybox:1.37
+      command: ["sh", "-c", "echo \"$(date -u +%FT%TZ) $(hostname) mounted\" >> /data/boot.log; exec sleep infinity"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 100m, memory: 64Mi}
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: nfs-demo
