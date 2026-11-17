@@ -83,27 +83,22 @@ x{ font-family: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, 
       <rect class="port" x="573" y="415" width="14" height="10" rx="2"/>
       <text class="title" x="516" y="446">Cisco CBS250-8T-D</text>
       <text class="mono small" x="516" y="466">mgmt 10.10.10.3（VLAN 1, DHCP）</text>
-      <text class="small" x="516" y="486">GE1・GE2: トランク（VLAN 1 untagged + VLAN 10 tagged）</text>
-      <text class="small" x="516" y="504">GE3〜GE8: VLAN 1 アクセス（未使用）</text>
+      <text class="small" x="516" y="486">GE1: トランク（VLAN 1 untagged + VLAN 10 tagged）</text>
+      <text class="small" x="516" y="504">GE2: VLAN 10 アクセス · GE3〜GE8: VLAN 1 アクセス（未使用）</text>
       <rect class="port" x="673" y="511" width="14" height="10" rx="2"/>
 
-      <!-- GE2 -> Zadara (trunk) -->
-      <line class="l1" x1="674" y1="521" x2="674" y2="572"/>
-      <line class="l10" x1="686" y1="521" x2="686" y2="572"/>
+      <!-- GE2 -> Zadara (access VLAN 10, untagged) -->
+      <line class="l10" x1="680" y1="521" x2="680" y2="572"/>
       <text class="mono" x="696" y="544">GE2 ⇄ enp2s0</text>
-      <text class="small" x="696" y="560">トランク</text>
+      <text class="small" x="696" y="560">アクセス（VLAN 10、タグなし）</text>
 
       <!-- Zadara -->
       <rect class="box-strong" x="440" y="572" width="440" height="118" rx="10"/>
       <text class="title" x="456" y="596">Zadara（Ubuntu 24.04 · DevStack）</text>
-      <rect class="svi1" x="456" y="608" width="196" height="70" rx="6"/>
-      <text class="t1 mono" x="468" y="627">enp2s0（untagged）</text>
-      <text class="mono" x="468" y="645">10.10.10.4/25（DHCP）</text>
-      <text class="small" x="468" y="663">デフォルトルート → 10.10.10.1</text>
-      <rect class="svi10" x="668" y="608" width="196" height="70" rx="6"/>
-      <text class="t10 mono" x="680" y="627">enp2s0.10（VLAN 10）</text>
-      <text class="mono" x="680" y="645">10.10.11.6/24（固定）</text>
-      <text class="small" x="680" y="663">Horizon · API · iSCSI :3260</text>
+      <rect class="svi10" x="456" y="608" width="408" height="70" rx="6"/>
+      <text class="t10 mono" x="468" y="627">enp2s0（VLAN 10 · タグなし）</text>
+      <text class="mono" x="468" y="645">10.10.11.6/24（固定）· デフォルトルート → 10.10.11.1</text>
+      <text class="small" x="468" y="663">SSH · Horizon · API · iSCSI :3260</text>
 
       <!-- OpenStack external net -->
       <rect class="ext" x="250" y="616" width="170" height="54" rx="6"/>

@@ -8,7 +8,7 @@ DevStack が最初から作る `admin` / `demo` プロジェクトの資源は�
 
 | もの | 値 |
 |---|---|
-| ホスト | Zadara。SSH は `tomi@10.10.10.4` (VLAN 1)。DevStack の `HOST_IP` は `10.10.11.6` (VLAN 10) |
+| ホスト | Zadara。SSH は `tomi@10.10.11.6`。DevStack の `HOST_IP` も `10.10.11.6` (VLAN 10、タグなしの `enp2s0`。2026-11-17 までは VLAN 1 の `10.10.10.4` にもいた) |
 | API / Horizon | `http://10.10.11.6/identity` / `http://10.10.11.6/dashboard` |
 | 練習用プロジェクト / ユーザー | `lab` / `labuser` (`scripts/setup-lab.sh` が作る。パスワードは `lab-openrc.sh` の中だけ) |
 | 外部ネットワーク | `public` (172.24.4.0/24)。Floating IP はこの範囲から払い出される |
@@ -23,8 +23,8 @@ DevStack が最初から作る `admin` / `demo` プロジェクトの資源は�
 Windows PC からファイルを Zadara に送り、練習用プロジェクトとユーザーを作る。
 
 ```bash
-scp -i ~/.ssh/"id_rsa(opensssh)" -r openstack-lab tomi@10.10.10.4:~/
-ssh -i ~/.ssh/"id_rsa(opensssh)" tomi@10.10.10.4
+scp -i ~/.ssh/"id_rsa(opensssh)" -r openstack-lab tomi@10.10.11.6:~/
+ssh -i ~/.ssh/"id_rsa(opensssh)" tomi@10.10.11.6
 bash ~/openstack-lab/scripts/setup-lab.sh
 ```
 

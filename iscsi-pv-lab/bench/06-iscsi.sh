@@ -27,7 +27,7 @@ run() { # place dir name fio-args...
 }
 echo "=== ネットワーク: Pod → ターゲット $TARGET"
 ip route get $TARGET | head -1 | sed 's/^/  /'
-echo "  Pod の eth0 MTU: $(cat /sys/class/net/eth0/mtu)  (Calico。ホスト側の enp3s0 / Zadara の enp2s0.10 は 1500)"
+echo "  Pod の eth0 MTU: $(cat /sys/class/net/eth0/mtu)  (Calico。ホスト側の enp3s0 / Zadara の enp2s0 は 1500)"
 ping -c 20 -i 0.2 -q $TARGET | tail -2 | sed 's/^/  /'
 tracepath -n $TARGET 2>/dev/null | tail -3 | sed 's/^/  /'
 echo "=== fio (${T}s / ${SZ})  iSCSI = /data, ローカル NVMe = /scratch"

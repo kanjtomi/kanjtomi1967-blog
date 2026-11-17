@@ -156,27 +156,22 @@ ol.path { margin: 0; padding-left: 1.4em; display: grid; gap: 4px; max-width: 72
       <rect class="port" x="573" y="415" width="14" height="10" rx="2"/>
       <text class="title" x="516" y="446">Cisco CBS250-8T-D</text>
       <text class="mono small" x="516" y="466">mgmt 10.10.10.3（VLAN 1, DHCP）</text>
-      <text class="small" x="516" y="486">GE1・GE2: トランク（VLAN 1 untagged + VLAN 10 tagged）</text>
-      <text class="small" x="516" y="504">GE3〜GE8: VLAN 1 アクセス（未使用）</text>
+      <text class="small" x="516" y="486">GE1: トランク（VLAN 1 untagged + VLAN 10 tagged）</text>
+      <text class="small" x="516" y="504">GE2: VLAN 10 アクセス · GE3〜GE8: VLAN 1 アクセス（未使用）</text>
       <rect class="port" x="673" y="511" width="14" height="10" rx="2"/>
 
-      <!-- GE2 -> Zadara (trunk) -->
-      <line class="l1" x1="674" y1="521" x2="674" y2="572"/>
-      <line class="l10" x1="686" y1="521" x2="686" y2="572"/>
+      <!-- GE2 -> Zadara (access VLAN 10, untagged) -->
+      <line class="l10" x1="680" y1="521" x2="680" y2="572"/>
       <text class="mono" x="696" y="544">GE2 ⇄ enp2s0</text>
-      <text class="small" x="696" y="560">トランク</text>
+      <text class="small" x="696" y="560">アクセス（VLAN 10、タグなし）</text>
 
       <!-- Zadara -->
       <rect class="box-strong" x="440" y="572" width="440" height="118" rx="10"/>
       <text class="title" x="456" y="596">Zadara（Ubuntu 24.04 · DevStack）</text>
-      <rect class="svi1" x="456" y="608" width="196" height="70" rx="6"/>
-      <text class="t1 mono" x="468" y="627">enp2s0（untagged）</text>
-      <text class="mono" x="468" y="645">10.10.10.4/25（DHCP）</text>
-      <text class="small" x="468" y="663">デフォルトルート → 10.10.10.1</text>
-      <rect class="svi10" x="668" y="608" width="196" height="70" rx="6"/>
-      <text class="t10 mono" x="680" y="627">enp2s0.10（VLAN 10）</text>
-      <text class="mono" x="680" y="645">10.10.11.6/24（固定）</text>
-      <text class="small" x="680" y="663">Horizon · API · iSCSI :3260</text>
+      <rect class="svi10" x="456" y="608" width="408" height="70" rx="6"/>
+      <text class="t10 mono" x="468" y="627">enp2s0（VLAN 10 · タグなし）</text>
+      <text class="mono" x="468" y="645">10.10.11.6/24（固定）· デフォルトルート → 10.10.11.1</text>
+      <text class="small" x="468" y="663">SSH · Horizon · API · iSCSI :3260</text>
 
       <!-- OpenStack external net -->
       <rect class="ext" x="250" y="616" width="170" height="54" rx="6"/>
@@ -204,10 +199,10 @@ ol.path { margin: 0; padding-left: 1.4em; display: grid; gap: 4px; max-width: 72
           <tr><td>Kobe <code>Gi0/0</code></td><td>アクセス</td><td><span class="tag v1">1</span></td><td>Raspberry Pi 3B+ <code>10.10.10.53</code></td></tr>
           <tr><td>Kobe <code>Gi0/1</code></td><td>トランク（native 1）</td><td><span class="tag v1">1</span> <span class="tag v10">10</span></td><td>CBS250 <code>GE1</code></td></tr>
           <tr><td>Kobe <code>Vlan1</code> / <code>Vlan10</code></td><td>SVI</td><td><span class="tag v1">1</span> <span class="tag v10">10</span></td><td><code>10.10.10.1/24</code>（DHCP あり）/ <code>10.10.11.1/24</code>（DHCP なし）</td></tr>
-          <tr><td>CBS250 <code>GE1</code> / <code>GE2</code></td><td>トランク</td><td><span class="tag v1">1 untagged</span> <span class="tag v10">10 tagged</span></td><td>Kobe <code>Gi0/1</code> / Zadara <code>enp2s0</code></td></tr>
+          <tr><td>CBS250 <code>GE1</code></td><td>トランク</td><td><span class="tag v1">1 untagged</span> <span class="tag v10">10 tagged</span></td><td>Kobe <code>Gi0/1</code></td></tr>
+          <tr><td>CBS250 <code>GE2</code></td><td>アクセス</td><td><span class="tag v10">10 untagged</span></td><td>Zadara <code>enp2s0</code></td></tr>
           <tr><td>CBS250 管理</td><td>—</td><td><span class="tag v1">1</span></td><td><code>10.10.10.3</code>（DHCP、Web UI は HTTP）</td></tr>
-          <tr><td>Zadara <code>enp2s0</code></td><td>タグなし</td><td><span class="tag v1">1</span></td><td><code>10.10.10.4/25</code>（DHCP）、デフォルトルート</td></tr>
-          <tr><td>Zadara <code>enp2s0.10</code></td><td>サブインターフェース</td><td><span class="tag v10">10</span></td><td><code>10.10.11.6/24</code>（netplan <code>90-vlan10.yaml</code>、ゲートウェイなし）</td></tr>
+          <tr><td>Zadara <code>enp2s0</code></td><td>タグなし</td><td><span class="tag v10">10</span></td><td><code>10.10.11.6/24</code>（netplan <code>90-vlan10.yaml</code>、固定）、デフォルトルート → 10.10.11.1</td></tr>
         </tbody>
       </table>
     </div>
@@ -219,9 +214,9 @@ ol.path { margin: 0; padding-left: 1.4em; display: grid; gap: 4px; max-width: 72
       <li>RHEL <code>192.168.0.200</code> → 自宅ルーター <code>192.168.0.1</code>（静的ルートで 192.168.0.100 へ）</li>
       <li>Kobe <code>Gi0/4</code> で受け、<code>Vlan10</code> の SVI へルーティング</li>
       <li><code>Gi0/1</code> から VLAN 10 のタグを付けて CBS250 <code>GE1</code> へ</li>
-      <li>CBS250 が VLAN 10 のまま <code>GE2</code> へ転送</li>
-      <li>Zadara の <code>enp2s0.10</code> がタグを外して受け取る（<code>10.10.11.6:3260</code>）</li>
+      <li>CBS250 がタグを外して VLAN 10 のアクセスポート <code>GE2</code> へ転送</li>
+      <li>Zadara の <code>enp2s0</code> がタグなしで受け取る（<code>10.10.11.6:3260</code>）</li>
     </ol>
-    <p class="note">戻りのパケットは Zadara のデフォルトルートに従い、VLAN 1（<code>enp2s0</code> → 10.10.10.1）から出ていく。行きと帰りで VLAN が違うが、どちらも Kobe を通るので通信は成り立つ。</p>
+    <p class="note">戻りも同じ経路を逆にたどる（Zadara のデフォルトルートは <code>10.10.11.1</code>）。2026-11-17 までは GE2 がトランクで、Zadara はタグなしの VLAN 1（<code>10.10.10.4</code>、DHCP）にもいたため、戻りだけが VLAN 1 から出る非対称な経路になっていた。</p>
   </section>
 </div>

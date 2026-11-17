@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run on Zadara: ssh tomi@10.10.10.4 'sudo bash -s' < iscsi-pv-lab/zadara/setup-target.sh
+# Run on Zadara: ssh tomi@10.10.11.6 'sudo bash -s' < iscsi-pv-lab/zadara/setup-target.sh
 # Adds one LIO iSCSI target for the home k8s cluster,
 # next to (not touching) the targets Cinder (lioadm) creates for OpenStack volumes.
 set -euo pipefail
