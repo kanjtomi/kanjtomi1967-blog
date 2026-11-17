@@ -342,8 +342,9 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   inline PowerShell → ssh quoting breaks.
 - **Storage**: no default StorageClass; workloads use `emptyDir` (data is
   disposable), hand-made static PVs (`iscsi-pv-lab/`, Prometheus's hostPath
-  PV), or ask for the `nfs-zadara` StorageClass by name — the only dynamic
-  provisioner (csi-driver-nfs, see `nfs-csi-lab` below)
+  PV), or ask by name for one of the two dynamic StorageClasses, both
+  backed by Zadara: `nfs-zadara` (csi-driver-nfs, see `nfs-csi-lab`) and
+  `smb-zadara` (csi-driver-smb, see `smb-csi-lab`)
 - **Images**: pulled from public registries (`docker.io`, `registry.k8s.io`), or
   imported directly into containerd for local builds (`imagePullPolicy: Never`,
   e.g. `localhost/comments-service:local`)
@@ -362,6 +363,16 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
     `ubuntu-vg/k8s-nfs` exported by nfs-kernel-server on Zadara to
     `192.168.0.200` only (`no_root_squash`). PVC sizes are not enforced (no
     quota). Demo: PVC/Pod `nfs-demo` (RWX). Details in `nfs-csi-lab/README.md`
+  - `smb-csi-lab` — SMB via CSI (`smb-csi-lab/`, added 2026-11-17): same
+    pattern with csi-driver-smb 1.20.4 (Helm release `csi-driver-smb` in
+    `kube-system`, Windows DaemonSet off) and StorageClass `smb-zadara`
+    (not default, reclaim Delete, SMB 3.1.1) over `//10.10.11.6/k8s` — a
+    20 GiB XFS LV `ubuntu-vg/k8s-smb` shared by Samba on Zadara to
+    `192.168.0.200` only, as system user `k8s-smb`. Its password is only in
+    Zadara's `/root/k8s-smb-password.txt` and Secret
+    `kube-system/smb-zadara-creds` (never commit it). nmbd is disabled.
+    Traffic is signed, not encrypted. Demo: PVC/Pod `smb-demo` (RWX).
+    Details in `smb-csi-lab/README.md`
   - `iscsi-pv-lab` — iSCSI PV lab (`iscsi-pv-lab/`, added 2026-11-14): a
     10 GiB LUN from the LIO target on Zadara (`10.10.11.6:3260`,
     `iqn.2026-11.local.kanjhome.zadara:k8s-pv1`, LV

@@ -1,0 +1,12 @@
+# Helm values for csi-driver-smb 1.20.4 (kube-system, release "csi-driver-smb").
+#   helm repo add csi-driver-smb https://raw.githubusercontent.com/kubernetes-csi/csi-driver-smb/master/charts
+#   helm upgrade --install csi-driver-smb csi-driver-smb/csi-driver-smb --version 1.20.4 \
+#     -n kube-system -f smb-csi-lab/k8s/csi-driver-smb-values.yaml
+# Chart defaults otherwise: controller and node on hostNetwork (health ports
+# 29642 / 29643, metrics 29644), kubelet dir /var/lib/kubelet, memory limits set.
+windows:
+  enabled: false   # Linux-only cluster; skip the Windows DaemonSet
+controller:
+  logLevel: 2      # default 5 logs every CSI call in full
+node:
+  logLevel: 2
