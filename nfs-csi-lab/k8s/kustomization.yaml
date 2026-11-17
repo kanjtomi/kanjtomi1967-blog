@@ -1,0 +1,4 @@
+# kubectl apply -k nfs-csi-lab/k8s   (install csi-driver-nfs with Helm first; see README)
+resources:
+  - storageclass.yaml
+  - nfs-csi-lab.yaml

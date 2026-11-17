@@ -340,8 +340,10 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
   journalctl), SSH as `root` (key auth). When scripting from Windows, pipe a
   script file over SSH (`ssh root@192.168.0.200 'bash -s' < script.sh`) —
   inline PowerShell → ssh quoting breaks.
-- **Storage**: no StorageClass / dynamic provisioning; workloads use
-  `emptyDir` (data is disposable) or hand-made static PVs (`s3-pv-lab/`)
+- **Storage**: no default StorageClass; workloads use `emptyDir` (data is
+  disposable), hand-made static PVs (`iscsi-pv-lab/`, Prometheus's hostPath
+  PV), or ask for the `nfs-zadara` StorageClass by name — the only dynamic
+  provisioner (csi-driver-nfs, see `nfs-csi-lab` below)
 - **Images**: pulled from public registries (`docker.io`, `registry.k8s.io`), or
   imported directly into containerd for local builds (`imagePullPolicy: Never`,
   e.g. `localhost/comments-service:local`)
@@ -352,6 +354,14 @@ A single-node kubeadm cluster on the home LAN, used only for learning/staging �
     exhaustion / OOM kill, and query verification with `EXPLAIN`. Manifests and
     the walkthrough are in `db-perf-lab/` (`kubectl apply -k db-perf-lab`); a
     copy is kept at `/root/db-perf-lab` on the host
+  - `nfs-csi-lab` — NFS via CSI (`nfs-csi-lab/`, added 2026-11-17):
+    csi-driver-nfs 4.13.6 (Helm release `csi-driver-nfs` in `kube-system`,
+    controller/node on hostNetwork, snapshotter off) provisions PVCs from
+    StorageClass `nfs-zadara` (not default, reclaim Delete, NFS v4.1 hard) as
+    one sub-directory each of `10.10.11.6:/srv/nfs/k8s` — a 20 GiB XFS LV
+    `ubuntu-vg/k8s-nfs` exported by nfs-kernel-server on Zadara to
+    `192.168.0.200` only (`no_root_squash`). PVC sizes are not enforced (no
+    quota). Demo: PVC/Pod `nfs-demo` (RWX). Details in `nfs-csi-lab/README.md`
   - `iscsi-pv-lab` — iSCSI PV lab (`iscsi-pv-lab/`, added 2026-11-14): a
     10 GiB LUN from the LIO target on Zadara (`10.10.11.6:3260`,
     `iqn.2026-11.local.kanjhome.zadara:k8s-pv1`, LV

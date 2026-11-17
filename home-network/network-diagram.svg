@@ -104,11 +104,11 @@
 
   <!-- Zadara on GE2 trunk -->
   <line x1="890" y1="596" x2="890" y2="650" class="trunk"/>
-  <text x="882" y="628" class="s" fill="#0e7490" text-anchor="end">GE2 trunk (1 U / 10 T)</text>
+  <text x="882" y="628" class="s" fill="#0e7490" text-anchor="end">GE2 access (VLAN 10 untagged)</text>
   <rect x="660" y="650" width="320" height="120" rx="6" class="srv"/>
   <text x="820" y="673" class="h" text-anchor="middle">Zadara · Ubuntu 24.04 · DevStack 2026.2</text>
-  <text x="674" y="695" class="s">enp2s0     10.10.10.4 (VLAN1, DHCP, default route)</text>
-  <text x="674" y="713" class="s">enp2s0.10  10.10.11.6/24 (VLAN10) = HOST_IP</text>
+  <text x="674" y="695" class="s">enp2s0     10.10.11.6/24 (VLAN10, static) = HOST_IP</text>
+  <text x="674" y="713" class="s">           default route → 10.10.11.1</text>
   <text x="674" y="731" class="s">br-ex      172.24.4.1/24 (floating IPs, host-only)</text>
   <text x="674" y="753" class="m">Horizon: http://10.10.11.6/dashboard</text>
 

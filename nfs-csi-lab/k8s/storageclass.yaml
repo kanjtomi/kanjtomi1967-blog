@@ -1,0 +1,19 @@
+# Dynamic NFS volumes on Zadara (10.10.11.6:/srv/nfs/k8s, a 20 GiB XFS LV).
+# Each PVC gets its own sub-directory, created by the csi-nfs controller and
+# removed again when the PV is deleted (reclaimPolicy Delete).
+# Not the default StorageClass - workloads must ask for it by name.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-zadara
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 10.10.11.6
+  share: /srv/nfs/k8s
+  subDir: ${pvc.metadata.namespace}-${pvc.metadata.name}
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+mountOptions:
+  - nfsvers=4.1
+  - hard

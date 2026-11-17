@@ -1,0 +1,12 @@
+# Helm values for csi-driver-nfs 4.13.6 (kube-system, release "csi-driver-nfs").
+#   helm repo add csi-driver-nfs https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
+#   helm upgrade --install csi-driver-nfs csi-driver-nfs/csi-driver-nfs --version 4.13.6 \
+#     -n kube-system -f nfs-csi-lab/k8s/csi-driver-nfs-values.yaml
+# Everything else stays at the chart defaults: controller and node run on
+# hostNetwork (so firewalld's pod -> host rejection never applies), kubeletDir
+# /var/lib/kubelet (a shared bind mount of /glide/k8s-data/kubelet), and every
+# container already has a memory limit.
+controller:
+  # No VolumeSnapshot CRDs / snapshot-controller on this cluster; without this
+  # the csi-snapshotter sidecar would only log errors.
+  enableSnapshotter: false

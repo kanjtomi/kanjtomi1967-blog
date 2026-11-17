@@ -24,7 +24,7 @@ Zadara (Ubuntu 24.04、DevStack が動いているサーバー) の LIO iSCSI �
 
 1. Zadara にターゲットを作る (何度実行しても同じ状態になる):
    ```bash
-   ssh tomi@10.10.10.4 'sudo bash -s' < iscsi-pv-lab/zadara/setup-target.sh
+   ssh tomi@10.10.11.6 'sudo bash -s' < iscsi-pv-lab/zadara/setup-target.sh
    ```
 2. RHEL で iscsid を有効にし、ターゲットが見えるか確かめる:
    ```bash
@@ -103,13 +103,40 @@ Gi0/4 (192.168.0.100、自宅 LAN 側) が auto 設定のまま **100Mbps でリ
   `show interfaces gi0/4` (WAN 側のルーテッドポート、`status` には出ない) を見る
 - C841M (CPU は P1021SEC、公式の性能値は「サービス多数有効で 30 Mbps 超」だけ) の CPU は、
   1Gbps 線速の順次読み込み中でも 5 秒平均 29% (うち割り込み 23% = CEF の高速パス)。
-  この経路では Cisco の CPU は律速にならない
+  この経路では Cisco の CPU は律速にならない (4k 混合 ~24k IOPS のときは 42%/35%)
+
+### キュー深度を 32 → 64 に上げた (2026-11-17)
+
+4k ランダムは `iodepth=64` にしても ~23.5k IOPS で頭打ちだった。回線 (56%)、Cisco CPU (42%)、
+Zadara の CPU (idle 90%) と NVMe (await 0.1 ms) はどれも余裕があり、律速は RHEL 側の
+`/sys/block/sdc/device/queue_depth` = 32 (open-iscsi の既定 `node.session.queue_depth`)。
+同時 32 件 ÷ 1 往復 ~1.3 ms ≒ 24k IOPS (`iostat` の `aqu-sz` が ~30 に張り付く)。
+ターゲットの `default_cmdsn_depth` は 64 なので、イニシエーター側を 64 に合わせた。
+
+| fio iodepth (queue_depth 64) | 4k 混合 70/30 | 4k 読み込み |
+|---|---|---|
+| 32 | 23,418 IOPS (1.36 ms) | 23,477 IOPS |
+| 64 | **34,416 IOPS** (1.86 ms) | **27,379 IOPS** (受信方向が 1GbE の線速) |
+| 128 | 32,958 IOPS (3.88 ms) | 27,506 IOPS (64 を超えた分はホスト内で待つだけ) |
+
+永続化は udev ルール [`host/99-iscsi-queue-depth.rules`](host/99-iscsi-queue-depth.rules)
+(LIO-ORG / `k8s-iscsi-pv1` の LUN が現れたら `queue_depth` に 64 を書く)。
+`/sys` に書くだけだと、kubelet の再ログインや再起動で 32 に戻る。
+
+```bash
+scp iscsi-pv-lab/host/99-iscsi-queue-depth.rules root@192.168.0.200:/etc/udev/rules.d/
+ssh root@192.168.0.200 'restorecon /etc/udev/rules.d/99-iscsi-queue-depth.rules && udevadm control --reload'
+# 確認 (32 に戻して change イベントを出すと 64 になる)
+ssh root@192.168.0.200 'echo 32 > /sys/block/sdc/device/queue_depth; udevadm trigger --action=change --subsystem-match=scsi --sysname-match=7:0:0:0; udevadm settle; cat /sys/block/sdc/device/queue_depth'
+```
+
+(`7:0:0:0` は今のセッションの SCSI アドレス。再ログインで変わるので `udevadm info -q path -n sdc` で確認する)
 
 ホスト側 (イニシエーター) で見るもの:
 
 ```bash
 iscsiadm -m session -P 3               # セッションの状態、MaxRecvDataSegmentLength (262144)、タイムアウト
-cat /sys/block/sdc/device/queue_depth  # 32 (LUN ごとのキュー深度)
+cat /sys/block/sdc/device/queue_depth  # 64 (LUN ごとのキュー深度。udev ルールで設定)
 cat /sys/block/sdc/queue/scheduler     # [mq-deadline]
 iostat -x sdc 1                        # r_await / aqu-sz
 multipath -ll                          # マルチパスは未設定 (パスは 1 本、ポータルも 1 つ)
@@ -117,6 +144,13 @@ multipath -ll                          # マルチパスは未設定 (パスは 
 
 ターゲット側 (Zadara) で見るもの: `sudo targetcli sessions`、`iostat -x dm-* 1` (LV の負荷)、
 `/sys/kernel/config/target/iscsi/<iqn>/tpgt_1/param/` (ネゴシエーションの値)。
+
+Zadara のネットワーク (2026-11-17 から): CBS250 の GE2 を VLAN 10 のアクセスポートにし、
+Zadara は `enp2s0` 1 本 (タグなし、10.10.11.6/24 固定、既定ルート 10.10.11.1) だけを持つ。
+それまでは GE2 がトランクで、Zadara は VLAN 1 (`enp2s0`、10.10.10.4、DHCP の既定ルート) と
+VLAN 10 (`enp2s0.10`) の両方にいたため、RHEL への返事だけが VLAN 1 から出る非対称な経路だった。
+切り替え後もベンチの値は変わらない (順次読み込み 111.8 MB/s、4k 混合 qd64 32,696 IOPS)。
+旧 netplan は Zadara の `/root/netplan-backup-20261117/` にある。
 
 ## 片付け
 
